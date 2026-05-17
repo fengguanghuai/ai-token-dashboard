@@ -1,5 +1,7 @@
 # AI Token Dashboard
 
+**[English](#ai-token-dashboard)** | [中文说明](#中文说明)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.5-green)](https://nodejs.org)
 
