@@ -1,98 +1,98 @@
 # AI Token Dashboard
 
-**[English](#ai-token-dashboard)** | [中文说明](#中文说明)
+[English](README.en.md) | **中文**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.5-green)](https://nodejs.org)
 
-A lightweight, privacy-first dashboard for tracking your local AI token usage across multiple agents and CLI tools.
+一个轻量、隐私优先的本地 AI Token 用量看板，支持同时追踪多种 Agent 和 CLI 工具的使用情况。
 
-Reads session logs directly from your machine, aggregates them into a local SQLite database, and serves a React UI — **no cloud, no telemetry, no third-party uploads by default.**
-
----
-
-<!-- Replace with actual screenshots -->
-## Screenshots
-
-> _Screenshots coming soon._
+直接读取本机的会话日志，聚合写入本地 SQLite，通过 React 应用展示——**默认零云端、零遥测、不上传任何数据。**
 
 ---
 
-## Features
+<!-- 替换为实际截图 -->
+## 截图
 
-- **Multi-source collection** — Claude Code, Codex CLI, Gemini CLI, Hermes Agent, OpenClaw
-- **Two views** — interactive usage dashboard (`/`) and a printable retrospective page (`/review`)
-- **Cost tracking** — per-model cost estimation via LiteLLM pricing data
-- **Multi-device** — optional push mode to aggregate usage from multiple machines into a single hub
-- **Docker-ready** — one-command deployment as a central ingest server
-- **Pure JavaScript** — no Rust toolchain, no native binaries, no extra CLIs required
+> _截图即将上线。_
 
 ---
 
-## Supported Data Sources
+## 功能特性
 
-| Tool | Data location |
-|------|--------------|
+- **多源采集** — 支持 Claude Code、Codex CLI、Gemini CLI、Hermes Agent、OpenClaw
+- **双视图** — 交互式用量看板（`/`）和适合阅读与打印的复盘页（`/review`）
+- **成本追踪** — 基于 LiteLLM 定价数据，按模型估算 token 费用
+- **多设备汇聚** — 可选推送模式，将多台机器的用量合并到单一中心节点
+- **Docker 支持** — 一条命令部署中心 ingest 服务
+- **纯 JavaScript** — 无需 Rust 工具链、无本地二进制、无额外 CLI 依赖
+
+---
+
+## 支持的数据源
+
+| 工具 | 数据位置 |
+|------|---------|
 | [Claude Code](https://claude.ai/code) | `~/.claude/projects/` |
 | [Codex CLI](https://github.com/openai/codex) | `~/.codex/sessions/` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/tmp/` |
-| Hermes Agent | `~/.hermes/state.db` (or `$HERMES_HOME/state.db`) |
+| Hermes Agent | `~/.hermes/state.db`（或 `$HERMES_HOME/state.db`） |
 | OpenClaw | `~/.openclaw/agents/` |
 
-Only the tools you actually have installed will produce data — others are silently skipped.
+只有实际安装了对应工具才会产生数据，未安装的会被静默跳过。
 
 ---
 
-## Requirements
+## 环境要求
 
-- **Node.js ≥ 22.5.0** (uses the built-in `node:sqlite` module)
+- **Node.js ≥ 22.5.0**（使用内置的 `node:sqlite` 模块）
 
 ---
 
-## Quick Start
+## 快速开始
 
 ```bash
-# 1. Install dependencies
+# 1. 安装依赖
 npm install
 
-# 2. Collect usage data from all local tools
+# 2. 采集所有本地工具的用量数据
 npm run collect
 
-# 3. Build the frontend
+# 3. 构建前端
 npm run build
 
-# 4. Start the server
+# 4. 启动服务
 npm run serve
 ```
 
-Open in your browser:
+在浏览器中打开：
 
 ```
-http://localhost:4173        # Usage dashboard
-http://localhost:4173/review # Retrospective view
+http://localhost:4173        # 用量看板
+http://localhost:4173/review # 复盘视图
 ```
 
-Usage data is written to `data/usage.sqlite`. The `data/` directory is gitignored and stays local.
+用量数据写入 `data/usage.sqlite`，`data/` 目录已加入 `.gitignore`，不会提交到 Git。
 
-### Development
+### 前端开发模式
 
 ```bash
-npm run dev   # Vite dev server with HMR on http://localhost:5173
+npm run dev   # 启动 Vite 开发服务器（HMR），地址：http://localhost:5173
 ```
 
 ---
 
-## Multi-Device Setup
+## 多设备汇聚
 
-Collect from multiple machines and aggregate into a single dashboard.
+从多台机器采集数据并合并到一个看板。
 
-**1. Start the hub on your central device:**
+**第一步：在中心设备启动 hub 服务：**
 
 ```bash
 INGEST_TOKEN="your-secret-token" npm run serve
 ```
 
-**2. On each device that uses AI tools, run collect with push:**
+**第二步：在每台使用 AI 工具的设备上，带 push 参数运行采集：**
 
 ```bash
 npm run collect -- \
@@ -101,60 +101,60 @@ npm run collect -- \
   --token "your-secret-token"
 ```
 
-The hub merges all devices' daily and session records into one SQLite database and displays them together in the UI.
+hub 会将所有设备的每日记录和会话记录合并写入同一个 SQLite，并在 Web 页面统一展示。
 
 ---
 
 ## Docker
 
-Best suited for running the hub/ingest server:
+适合作为中心看板和 ingest 服务部署：
 
 ```bash
 INGEST_TOKEN="your-secret-token" docker compose up -d
 ```
 
-Data is written to the mounted `./data` volume. **Local log collection should run on the host**, as agent session files live in the host user's home directory.
+数据写入挂载的 `./data` 目录。**本机日志采集建议在宿主机执行**，因为各 Agent/CLI 的会话文件保存在宿主机用户目录中。
 
 ---
 
-## Configuration
+## 配置项
 
-| Environment variable | Default | Description |
-|---------------------|---------|-------------|
-| `PORT` | `4173` | HTTP server port |
-| `DB_PATH` | `data/usage.sqlite` | SQLite database path |
-| `INGEST_TOKEN` | _(unset)_ | If set, `/api/ingest` requires `Authorization: Bearer <token>` |
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `PORT` | `4173` | HTTP 服务端口 |
+| `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
+| `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
 
-CLI flags for `npm run collect`:
+`npm run collect` 的 CLI 参数：
 
-| Flag | Example | Description |
-|------|---------|-------------|
-| `--device` | `my-laptop` | Device label stored with each record (defaults to hostname) |
-| `--db` | `/path/to/db` | Override the SQLite path |
-| `--push` | `http://hub:4173/api/ingest` | Push collected data to a remote hub |
-| `--token` | `your-secret-token` | Bearer token for the remote hub |
-
----
-
-## Privacy & Security
-
-- All data collection reads **local files only** — no network calls are made during collection.
-- Nothing is uploaded unless you explicitly pass `--push`.
-- `--push` sends data only to the URL you provide.
-- When `INGEST_TOKEN` is set, the `/api/ingest` endpoint requires a Bearer token.
-- Do not commit `data/usage.sqlite`, `.env`, or any exported data files.
+| 参数 | 示例 | 说明 |
+|------|------|------|
+| `--device` | `my-laptop` | 写入记录的设备标签（默认为主机名） |
+| `--db` | `/path/to/db` | 覆盖 SQLite 路径 |
+| `--push` | `http://hub:4173/api/ingest` | 将采集数据推送到远程 hub |
+| `--token` | `your-secret-token` | 远程 hub 的 Bearer token |
 
 ---
 
-## Project Structure
+## 隐私与安全
+
+- 所有采集操作只读取**本机文件**，采集过程中不发起任何网络请求。
+- 除非显式传入 `--push`，否则不会上传任何数据。
+- `--push` 只向你提供的 URL 发送数据。
+- 设置 `INGEST_TOKEN` 后，`/api/ingest` 接口需要 Bearer token 鉴权。
+- 不要将 `data/usage.sqlite`、`.env` 或任何采集导出文件提交到 Git。
+
+---
+
+## 项目结构
 
 ```
 src/
-├── collect.mjs          # CLI entry point for data collection
-├── server.mjs           # HTTP server + API
-├── db.mjs               # SQLite schema and upsert helpers
-├── pricing.mjs          # LiteLLM-based cost estimation
-├── collectors/          # Per-tool data collectors
+├── collect.mjs          # 数据采集 CLI 入口
+├── server.mjs           # HTTP 服务器 + API
+├── db.mjs               # SQLite schema 与 upsert 辅助函数
+├── pricing.mjs          # 基于 LiteLLM 的成本估算
+├── collectors/          # 各工具采集器
 │   ├── claude-code.mjs
 │   ├── codex.mjs
 │   ├── gemini.mjs
@@ -162,53 +162,21 @@ src/
 │   ├── openclaw.mjs
 │   └── utils.mjs
 └── client/
-    ├── dashboard/       # Main usage dashboard (React)
-    ├── review/          # Retrospective view (React)
-    └── shared/          # Shared utilities
+    ├── dashboard/       # 主用量看板（React）
+    ├── review/          # 复盘视图（React）
+    └── shared/          # 共享工具函数
 ```
 
 ---
 
-## Contributing
+## 参与贡献
 
-Contributions are welcome. To add support for a new tool, implement a collector in `src/collectors/` that exports a `collect()` function returning `{ graphJson, modelsJson }` — see existing collectors for the expected shape.
+欢迎贡献。如需新增工具支持，请在 `src/collectors/` 中实现一个 collector，导出返回 `{ graphJson, modelsJson }` 的 `collect()` 函数——可参考现有 collector 了解预期数据结构。
 
-Please open an issue before submitting large changes.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+提交较大改动前，请先开 issue 讨论。
 
 ---
 
-## 中文说明
+## 许可证
 
-一个轻量的本地 AI Token 用量看板，读取本机多种 Agent/CLI 的使用记录，统一写入 SQLite，通过 React 应用提供两个视图：
-
-- `/`：交互式用量看板，包含趋势、来源、模型、项目/会话和采集记录。
-- `/review`：复盘页，按周期生成适合阅读和打印的总结。
-
-**默认不会上传任何数据。** 只有显式传入 `--push` 时，才会把本机汇总结果上报到你指定的中心节点。
-
-### 本地运行
-
-```bash
-npm install
-npm run collect
-npm run build
-npm run serve
-```
-
-访问 `http://localhost:4173`，数据写入 `data/usage.sqlite`（已 gitignore，不会提交）。
-
-### Docker 部署（中心节点）
-
-```bash
-INGEST_TOKEN="your-secret-token" docker compose up -d
-```
-
-### 隐私说明
-
-采集过程只读取本机文件，不会调用任何上传命令。`--push` 只发送到你提供的 URL，`INGEST_TOKEN` 开启后接口需要 Bearer token 鉴权。
+MIT — 详见 [LICENSE](LICENSE)。
