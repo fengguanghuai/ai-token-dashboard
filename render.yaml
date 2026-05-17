@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ai-token-dashboard
+    env: docker
+    plan: starter
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 4173
+      - key: INGEST_TOKEN
+        generateValue: true
+    disk:
+      name: ai-token-dashboard-data
+      mountPath: /app/data
+      sizeGB: 1

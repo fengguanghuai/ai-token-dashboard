@@ -1,0 +1,24 @@
+{
+  "name": "ai-token-dashboard",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "collect": "node src/collect.mjs",
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build",
+    "preview": "npm run build && node src/server.mjs",
+    "serve": "node src/server.mjs"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "echarts": "^6.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "vite": "^7.2.7"
+  }
+}

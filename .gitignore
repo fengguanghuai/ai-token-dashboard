@@ -1,0 +1,9 @@
+data/*
+!data/.gitkeep
+.DS_Store
+*.log
+node_modules/
+.npm-cache/
+dist/
+.env
+.env.*
