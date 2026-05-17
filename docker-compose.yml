@@ -5,6 +5,6 @@ services:
       - "4173:4173"
     environment:
       PORT: "4173"
-      INGEST_TOKEN: "${INGEST_TOKEN:-change-me}"
+      INGEST_TOKEN: "${INGEST_TOKEN:?Set INGEST_TOKEN before starting the hub}"
     volumes:
       - ./data:/app/data
