@@ -1,5 +1,7 @@
 data/*
 !data/.gitkeep
+!data/pricing-litellm.json
+!data/pricing-openrouter.json
 .DS_Store
 *.log
 node_modules/

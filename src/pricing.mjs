@@ -3,8 +3,8 @@
  *
  * Lookup priority:
  *   1. In-memory singleton (cleared per process)
- *   2. Disk cache at data/pricing-litellm.json with 1-hour TTL
- *   3. Runtime fetch from LiteLLM
+ *   2. Bundled disk pricing at data/pricing-litellm.json
+ *   3. Runtime fetch from LiteLLM only when explicitly enabled
  *   4. Optional OpenRouter cache fallback for models missing from LiteLLM
  *   5. Stale disk cache fallback
  *   6. Hardcoded Cursor overrides for models not yet in upstream pricing
@@ -24,7 +24,7 @@ const LITELLM_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 
-const CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+const CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour, used only for explicit live refresh.
 const OPENROUTER_FETCH_TIMEOUT_MS = 30_000;
 const OPENROUTER_CONCURRENCY = 10;
 const MAX_PREFIX_STRIP_SEGMENTS = 2;
@@ -62,6 +62,7 @@ const CURSOR_OVERRIDES = {
 // ---------------------------------------------------------------------------
 
 let _pricingData = null; // { fetchedAt: number, data: object } | null
+const _lookupCacheByDataset = new WeakMap();
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -74,22 +75,29 @@ let _pricingData = null; // { fetchedAt: number, data: object } | null
  * @returns {Promise<object|null>}  Raw LiteLLM dataset or null on total failure.
  */
 export async function loadPricing(cachePath) {
+  const refresh = shouldRefreshPricing();
+
   // 1. In-memory hit
-  if (_pricingData && Date.now() - _pricingData.fetchedAt < CACHE_MAX_AGE_MS) {
+  if (_pricingData && !refresh) {
     return attachOpenRouterPricing(_pricingData.data);
   }
 
-  // 2. Fresh disk cache
-  if (cachePath && existsSync(cachePath)) {
+  // 2. Bundled disk pricing. Normal collection should be fast and offline.
+  if (!refresh && cachePath && existsSync(cachePath)) {
     try {
       const raw = JSON.parse(await readFile(cachePath, 'utf8'));
-      if (raw?.data && Date.now() - (raw.fetchedAt ?? 0) < CACHE_MAX_AGE_MS) {
+      if (raw?.data) {
         _pricingData = raw;
         const data = await attachOpenRouterPricing(raw.data);
-        console.log(`[pricing] loaded from cache (${Object.keys(raw.data).length} models)`);
+        console.log(`[pricing] loaded bundled LiteLLM data (${Object.keys(raw.data).length} models)`);
         return data;
       }
     } catch { /* fall through to fetch */ }
+  }
+
+  if (!refresh) {
+    console.warn('[pricing] bundled LiteLLM data missing — run npm run pricing:update');
+    return null;
   }
 
   // 3. Live fetch from LiteLLM
@@ -137,7 +145,7 @@ export async function loadPricing(cachePath) {
  */
 export function calculateCost(model, tokens, pricingData, provider = null) {
   const { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, reasoning = 0 } = tokens;
-  const p = lookupPricing(model, pricingData, provider);
+  const p = lookupPricingCached(model, pricingData, provider);
   if (!p) return 0;
 
   return (
@@ -161,6 +169,25 @@ export function calculateCost(model, tokens, pricingData, provider = null) {
       [200_000, p.cacheWriteAbove200k]
     ])
   );
+}
+
+function lookupPricingCached(model, pricingData, provider) {
+  if (!pricingData || typeof pricingData !== 'object') {
+    return lookupPricing(model, pricingData, provider);
+  }
+
+  let cache = _lookupCacheByDataset.get(pricingData);
+  if (!cache) {
+    cache = new Map();
+    _lookupCacheByDataset.set(pricingData, cache);
+  }
+
+  const key = `${provider || ''}::${model || ''}`.toLowerCase();
+  if (cache.has(key)) return cache.get(key);
+
+  const value = lookupPricing(model, pricingData, provider);
+  cache.set(key, value);
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,16 +335,21 @@ async function attachOpenRouterPricing(litellm) {
 }
 
 async function loadOpenRouterCache() {
+  const refresh = shouldRefreshPricing();
   const cachePath = join(process.cwd(), 'data', 'pricing-openrouter.json');
 
-  if (existsSync(cachePath)) {
+  if (!refresh && existsSync(cachePath)) {
     try {
       const raw = JSON.parse(await readFile(cachePath, 'utf8'));
-      if (raw?.data && Date.now() - (raw.fetchedAt ?? 0) < CACHE_MAX_AGE_MS) {
-        console.log(`[pricing] loaded OpenRouter cache (${Object.keys(raw.data).length} models)`);
+      if (raw?.data) {
+        console.log(`[pricing] loaded bundled OpenRouter data (${Object.keys(raw.data).length} models)`);
         return raw.data;
       }
     } catch { /* fall through to fetch */ }
+  }
+
+  if (!refresh) {
+    return null;
   }
 
   try {
@@ -343,6 +375,10 @@ async function loadOpenRouterCache() {
   }
 
   return null;
+}
+
+function shouldRefreshPricing() {
+  return process.env.PRICING_REFRESH === '1' || process.env.PRICING_REFRESH === 'true';
 }
 
 async function fetchOpenRouterPricing() {

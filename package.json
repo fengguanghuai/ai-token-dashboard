@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "collect": "node src/collect.mjs",
-    "dev": "vite --host 127.0.0.1 --port 5173",
+    "pricing:update": "node src/update-pricing.mjs",
+    "dev": "node src/dev.mjs",
+    "dev:client": "vite --host 127.0.0.1 --port 5173",
+    "dev:server": "node src/server.mjs",
     "build": "vite build",
     "preview": "npm run build && node src/server.mjs",
     "serve": "node src/server.mjs"

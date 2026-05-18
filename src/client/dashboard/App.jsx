@@ -9,10 +9,18 @@ import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from 
 import { TablePanel, DrillDrawer } from './components-tables.jsx';
 import './styles.css';
 
+function summarizeCollectOutput(stdout) {
+  return stdout
+    ? stdout.split('\n').filter(Boolean).slice(-5).join(' · ')
+    : '采集完成';
+}
+
 export function App() {
   const [M, setM] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [collecting, setCollecting] = useState(false);
+  const [collectStatus, setCollectStatus] = useState(null);
 
   // ───── Load data from API ─────
   const loadData = useCallback(() => {
@@ -54,6 +62,66 @@ export function App() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const syncCollectStatus = useCallback((options = {}) => {
+    return fetch('/api/collect/status')
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(data => {
+        if (data.status === 'running') {
+          setCollecting(true);
+          setCollectStatus({ type: 'running', message: data.message || '正在采集本机用量…' });
+        } else if (data.status === 'ok') {
+          setCollecting(false);
+          setCollectStatus({ type: 'ok', message: summarizeCollectOutput(data.stdout) });
+          if (options.refreshOnDone) loadData();
+        } else if (data.status === 'error') {
+          setCollecting(false);
+          setCollectStatus({ type: 'error', message: data.stderr || data.message || '采集失败' });
+        } else {
+          setCollecting(false);
+        }
+        return data;
+      });
+  }, [loadData]);
+
+  const waitForCollectDone = useCallback(async () => {
+    for (;;) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const data = await syncCollectStatus({ refreshOnDone: true });
+      if (data.status !== 'running') return data;
+    }
+  }, [syncCollectStatus]);
+
+  useEffect(() => {
+    let cancelled = false;
+    syncCollectStatus()
+      .then(data => {
+        if (!cancelled && data.status === 'running') waitForCollectDone();
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [syncCollectStatus, waitForCollectDone]);
+
+  const runCollect = useCallback(() => {
+    setCollecting(true);
+    setCollectStatus({ type: 'running', message: '正在采集本机用量…' });
+    fetch('/api/collect', { method: 'POST' })
+      .then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok && r.status !== 202) {
+          throw new Error(data.error || data.stderr || `HTTP ${r.status}`);
+        }
+        setCollectStatus({ type: 'running', message: data.message || '正在采集本机用量…' });
+        return waitForCollectDone();
+      })
+      .catch(err => {
+        setCollecting(false);
+        setCollectStatus({ type: 'error', message: err.message || '采集失败' });
+      });
+  }, [waitForCollectDone]);
+
   // ───── Loading / error screens ─────
   if (loadError) {
     return (
@@ -88,13 +156,21 @@ export function App() {
     );
   }
 
-  return <Dashboard M={M} refreshing={refreshing} onRefresh={loadData} />;
+  return (
+    <Dashboard
+      M={M}
+      refreshing={refreshing}
+      collecting={collecting}
+      collectStatus={collectStatus}
+      onRefresh={loadData}
+      onCollect={runCollect} />
+  );
 }
 
 /* =============================================================
    Dashboard (extracted so App stays clean)
    ============================================================= */
-function Dashboard({ M, refreshing, onRefresh }) {
+function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onCollect }) {
   // ───── Filter state ─────
   const [filters, setFilters] = useState(() => ({
     rangeId: '30d',
@@ -212,7 +288,13 @@ function Dashboard({ M, refreshing, onRefresh }) {
 
   return (
     <div className="app">
-      <Topbar lastSync={lastSync} onRefresh={onRefresh} refreshing={refreshing} />
+      <Topbar
+        lastSync={lastSync}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
+        onCollect={onCollect}
+        collecting={collecting}
+        collectStatus={collectStatus} />
 
       <FilterBar
         f={filters}

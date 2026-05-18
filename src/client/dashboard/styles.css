@@ -157,7 +157,8 @@ button, input, select { font-family: inherit; color: inherit; }
   gap: 8px;
 }
 
-.sync-pill {
+.sync-pill,
+.collect-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -171,12 +172,37 @@ button, input, select { font-family: inherit; color: inherit; }
   white-space: nowrap;
 }
 
-.sync-dot {
+.sync-dot,
+.collect-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--good);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--good), transparent 80%);
   animation: pulse 2.4s infinite;
+}
+
+.collect-pill {
+  max-width: 160px;
+}
+
+.collect-pill span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collect-running .collect-dot {
+  background: var(--c-indigo);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c-indigo), transparent 80%);
+}
+
+.collect-ok .collect-dot {
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--good), transparent 80%);
+}
+
+.collect-error .collect-dot {
+  background: var(--bad);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--bad), transparent 80%);
 }
 
 @keyframes pulse {
@@ -202,6 +228,10 @@ button, input, select { font-family: inherit; color: inherit; }
 
 .btn:hover { background: var(--surface-2); border-color: var(--border); }
 .btn:active { background: var(--surface-3); }
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 .btn-primary {
   background: var(--text);

@@ -1,4 +1,5 @@
 import { createReadStream, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
@@ -9,6 +10,16 @@ const staticDir = existsSync(resolve(process.cwd(), 'dist'))
   ? resolve(process.cwd(), 'dist')
   : resolve(process.cwd(), 'public');
 const db = openDb(process.env.DB_PATH);
+let activeCollection = null;
+let collectionState = {
+  status: 'idle',
+  message: '尚未启动采集',
+  startedAt: null,
+  finishedAt: null,
+  exitCode: null,
+  stdout: '',
+  stderr: ''
+};
 
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -160,7 +171,78 @@ function handleApi(req, url, res) {
     handleIngest(req, res);
     return;
   }
+  if (url.pathname === '/api/collect' && req.method === 'POST') {
+    handleCollect(req, res);
+    return;
+  }
+  if (url.pathname === '/api/collect/status') {
+    sendJson(res, collectionState);
+    return;
+  }
   sendJson(res, { error: 'Not found' }, 404);
+}
+
+function handleCollect(req, res) {
+  if (!isLoopback(req.socket.remoteAddress)) {
+    sendJson(res, { error: '采集接口仅允许本机访问' }, 403);
+    return;
+  }
+
+  if (activeCollection) {
+    sendJson(res, collectionState, 202);
+    return;
+  }
+
+  const child = spawn(process.execPath, ['src/collect.mjs'], {
+    cwd: process.cwd(),
+    env: process.env,
+    windowsHide: true
+  });
+
+  activeCollection = child;
+  let stdout = '';
+  let stderr = '';
+  const startedAt = new Date().toISOString();
+  collectionState = {
+    status: 'running',
+    message: '正在采集本机用量',
+    startedAt,
+    finishedAt: null,
+    exitCode: null,
+    stdout: '',
+    stderr: ''
+  };
+
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+
+  child.on('error', error => {
+    activeCollection = null;
+    collectionState = {
+      ...collectionState,
+      status: 'error',
+      message: error.message,
+      finishedAt: new Date().toISOString(),
+      stderr: error.message
+    };
+  });
+
+  child.on('close', code => {
+    activeCollection = null;
+    collectionState = {
+      status: code === 0 ? 'ok' : 'error',
+      message: code === 0 ? '采集完成' : '采集失败',
+      exitCode: code,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      stdout: trimOutput(stdout),
+      stderr: trimOutput(stderr)
+    };
+  });
+
+  sendJson(res, collectionState, 202);
 }
 
 async function handleIngest(req, res) {
@@ -220,6 +302,18 @@ function all(sql) {
 function sendJson(res, value, status = 200) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(value));
+}
+
+function trimOutput(value) {
+  const text = String(value || '').trim();
+  return text.length > 12000 ? `${text.slice(-12000)}` : text;
+}
+
+function isLoopback(address = '') {
+  return address === '127.0.0.1'
+    || address === '::1'
+    || address === '::ffff:127.0.0.1'
+    || address === 'localhost';
 }
 
 function readJson(req) {

@@ -8,7 +8,7 @@ import { U } from '../shared/utils.js';
 // ───────────────────────────────────────────────────────────────
 // Topbar
 // ───────────────────────────────────────────────────────────────
-function Topbar({ lastSync, onRefresh, refreshing }) {
+function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus }) {
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -25,6 +25,12 @@ function Topbar({ lastSync, onRefresh, refreshing }) {
         </div>
       </div>
       <div className="topbar-right">
+        {collectStatus && (
+          <div className={`collect-pill collect-${collectStatus.type}`} title={collectStatus.message}>
+            <span className="collect-dot"></span>
+            <span>{collectStatus.type === 'running' ? '采集中' : collectStatus.type === 'ok' ? '采集完成' : '采集失败'}</span>
+          </div>
+        )}
         <div className="sync-pill">
           <span className="sync-dot"></span>
           <span>最后同步 <strong style={{color:'var(--text)', fontWeight:600}}>{lastSync}</strong></span>
@@ -34,6 +40,12 @@ function Topbar({ lastSync, onRefresh, refreshing }) {
             <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4"/>
             <path d="M8 1v2M8 13v2M15 8h-2M3 8H1M13.07 2.93l-1.41 1.41M4.34 11.66l-1.41 1.41M13.07 13.07l-1.41-1.41M4.34 4.34L2.93 2.93" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
           </svg>
+        </button>
+        <button className={`btn btn-primary ${collecting ? 'loading' : ''}`} onClick={onCollect} disabled={collecting || refreshing}>
+          <svg className={`icon ${collecting ? 'spin' : ''}`} viewBox="0 0 16 16" fill="none" style={{opacity:1}}>
+            <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          {collecting ? '采集中' : '采集'}
         </button>
         <button className={`btn btn-primary ${refreshing ? 'loading' : ''}`} onClick={onRefresh}>
           <svg className={`icon ${refreshing ? 'spin' : ''}`} viewBox="0 0 16 16" fill="none" style={{opacity:1}}>
