@@ -14,7 +14,6 @@
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { homedir } from 'node:os';
 import { canonicalProvider, inferProviderFromModel } from './collectors/utils.mjs';
 
 // ---------------------------------------------------------------------------
@@ -23,8 +22,13 @@ import { canonicalProvider, inferProviderFromModel } from './collectors/utils.mj
 
 const LITELLM_URL =
   'https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json';
+const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models';
 
 const CACHE_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour
+const OPENROUTER_FETCH_TIMEOUT_MS = 30_000;
+const OPENROUTER_CONCURRENCY = 10;
+const MAX_PREFIX_STRIP_SEGMENTS = 2;
+const MAX_SUFFIX_STRIP_SEGMENTS = 4;
 
 /** Subscription-based providers whose $0 pricing is meaningless for per-token estimation. */
 const EXCLUDED_PREFIXES = ['github_copilot/'];
@@ -136,35 +140,26 @@ export function calculateCost(model, tokens, pricingData, provider = null) {
   const p = lookupPricing(model, pricingData, provider);
   if (!p) return 0;
 
-  if (canonicalProvider(provider) === 'xiaomi') {
-    return (
-      tieredCost(input, p.input, [
-        [128_000, p.inputAbove128k],
-        [200_000, p.inputAbove200k],
-        [256_000, p.inputAbove256k],
-        [272_000, p.inputAbove272k]
-      ]) +
-      tieredCost(output + reasoning, p.output, [
-        [128_000, p.outputAbove128k],
-        [200_000, p.outputAbove200k],
-        [256_000, p.outputAbove256k],
-        [272_000, p.outputAbove272k]
-      ]) +
-      tieredCost(cacheRead, p.cacheRead, [
-        [200_000, p.cacheReadAbove200k],
-        [272_000, p.cacheReadAbove272k]
-      ]) +
-      tieredCost(cacheWrite, p.cacheWrite, [
-        [200_000, p.cacheWriteAbove200k]
-      ])
-    );
-  }
-
   return (
-    input      * (p.input      ?? 0) +
-    (output + reasoning) * (p.output ?? 0) +
-    cacheRead  * (p.cacheRead  ?? 0) +
-    cacheWrite * (p.cacheWrite ?? 0)
+    tieredCost(input, p.input, [
+      [128_000, p.inputAbove128k],
+      [200_000, p.inputAbove200k],
+      [256_000, p.inputAbove256k],
+      [272_000, p.inputAbove272k]
+    ]) +
+    tieredCost(output + reasoning, p.output, [
+      [128_000, p.outputAbove128k],
+      [200_000, p.outputAbove200k],
+      [256_000, p.outputAbove256k],
+      [272_000, p.outputAbove272k]
+    ]) +
+    tieredCost(cacheRead, p.cacheRead, [
+      [200_000, p.cacheReadAbove200k],
+      [272_000, p.cacheReadAbove272k]
+    ]) +
+    tieredCost(cacheWrite, p.cacheWrite, [
+      [200_000, p.cacheWriteAbove200k]
+    ])
   );
 }
 
@@ -182,30 +177,81 @@ function lookupPricing(modelId, pricingData, provider = null) {
 
   const datasets = splitPricingData(pricingData);
   const providerHint = canonicalProvider(provider) || inferProviderFromModel(id);
+  const candidates = modelCandidates(id, providerHint);
 
-  // Strip provider prefix for recursive lookup ("openai/gpt-5.3" → "gpt-5.3")
-  const slashIdx = id.indexOf('/');
-  const bare = slashIdx !== -1 ? id.slice(slashIdx + 1) : id;
-
-  // 1. LiteLLM
+  let litellmHit = null;
   if (datasets.litellm) {
-    const litellmCandidates = providerHint ? [`${providerToDatasetPrefix(providerHint)}/${bare}`, id, bare] : [id, bare];
-    const hit = firstPricingHit(litellmCandidates, datasets.litellm, findInDataset);
-    if (hit) return hit;
+    litellmHit = firstPricingHit(candidates.litellm, datasets.litellm, findInDataset);
   }
 
-  // 2. OpenRouter fallback for models missing from LiteLLM.
+  let openrouterHit = null;
   if (datasets.openrouter) {
-    const openrouterCandidates = providerHint ? [`${providerToOpenRouterPrefix(providerHint)}/${bare}`, id, bare] : [id, bare];
-    const hit = firstPricingHit(openrouterCandidates, datasets.openrouter, findInOpenRouter);
-    if (hit) return hit;
+    openrouterHit = firstPricingHit(candidates.openrouter, datasets.openrouter, findInOpenRouter);
   }
 
-  // 2. Cursor overrides (exact match on bare id, case-insensitive)
-  const override = CURSOR_OVERRIDES[bare] ?? CURSOR_OVERRIDES[id];
+  const exactHit = choosePricingHit(litellmHit, openrouterHit);
+  if (exactHit) return exactHit;
+
+  // 3. Cursor model-price overrides only, no Cursor account/sync integration.
+  const override = candidates.bareIds.map(candidate => CURSOR_OVERRIDES[candidate]).find(Boolean);
   if (override) return override;
 
+  // 4. Last resort: light fuzzy matching for aliases like "minimax-m2.5".
+  if (datasets.litellm) {
+    const hit = firstPricingHit(candidates.litellm, datasets.litellm, findFuzzyPricing);
+    if (hit) return hit;
+  }
+  if (datasets.openrouter) {
+    const hit = firstPricingHit(candidates.openrouter, datasets.openrouter, findFuzzyPricing);
+    if (hit) return hit;
+  }
+
   return null;
+}
+
+function choosePricingHit(litellmHit, openrouterHit) {
+  if (!litellmHit) return openrouterHit;
+  if (!openrouterHit) return litellmHit;
+
+  if (!hasCachePricing(litellmHit) && hasCachePricing(openrouterHit)) {
+    return openrouterHit;
+  }
+
+  return litellmHit;
+}
+
+function hasCachePricing(pricing) {
+  return validPrice(pricing?.cacheRead) > 0 || validPrice(pricing?.cacheWrite) > 0;
+}
+
+function modelCandidates(id, providerHint) {
+  const base = bareModelId(id);
+  const bareIds = unique([
+    id,
+    base,
+    normalizeVersionSeparator(id),
+    normalizeVersionSeparator(base),
+    ...stripUnknownSuffixes(id),
+    ...stripUnknownSuffixes(base),
+    ...stripUnknownPrefixes(id),
+    ...stripUnknownPrefixes(base)
+  ].filter(Boolean));
+
+  const withProvider = (prefixer) => {
+    const values = [];
+    for (const candidate of bareIds) {
+      const bare = bareModelId(candidate);
+      if (providerHint) values.push(`${prefixer(providerHint)}/${bare}`);
+      values.push(candidate, bare);
+    }
+    return unique(values);
+  };
+
+  return {
+    bareIds,
+    litellm: withProvider(providerToDatasetPrefix),
+    openrouter: withProvider(providerToOpenRouterPrefix)
+  };
 }
 
 function firstPricingHit(candidates, data, finder) {
@@ -233,6 +279,10 @@ function findInDataset(id, data) {
   return null;
 }
 
+function findFuzzyPricing(id, data) {
+  return findFuzzyDatasetHit(bareModelId(id), data);
+}
+
 function findInOpenRouter(id, data) {
   const exact = findInDataset(id, data);
   if (exact) return exact;
@@ -258,21 +308,149 @@ async function attachOpenRouterPricing(litellm) {
 }
 
 async function loadOpenRouterCache() {
-  const candidates = [
-    join(process.cwd(), 'data', 'pricing-openrouter.json'),
-  ];
+  const cachePath = join(process.cwd(), 'data', 'pricing-openrouter.json');
 
-  for (const filePath of candidates) {
-    if (!existsSync(filePath)) continue;
+  if (existsSync(cachePath)) {
     try {
-      const raw = JSON.parse(await readFile(filePath, 'utf8'));
-      if (raw?.data) return raw.data;
-    } catch {
-      // Try next cache location.
+      const raw = JSON.parse(await readFile(cachePath, 'utf8'));
+      if (raw?.data && Date.now() - (raw.fetchedAt ?? 0) < CACHE_MAX_AGE_MS) {
+        console.log(`[pricing] loaded OpenRouter cache (${Object.keys(raw.data).length} models)`);
+        return raw.data;
+      }
+    } catch { /* fall through to fetch */ }
+  }
+
+  try {
+    const data = await fetchOpenRouterPricing();
+    if (Object.keys(data).length > 0) {
+      await mkdir(dirname(cachePath), { recursive: true });
+      await writeFile(cachePath, JSON.stringify({ fetchedAt: Date.now(), data }), 'utf8');
+      console.log(`[pricing] fetched from OpenRouter (${Object.keys(data).length} models)`);
+      return data;
     }
+  } catch (err) {
+    console.warn(`[pricing] OpenRouter fetch failed: ${err.message}`);
+  }
+
+  if (existsSync(cachePath)) {
+    try {
+      const raw = JSON.parse(await readFile(cachePath, 'utf8'));
+      if (raw?.data) {
+        console.warn('[pricing] using stale OpenRouter cache as fallback');
+        return raw.data;
+      }
+    } catch { /* nothing */ }
   }
 
   return null;
+}
+
+async function fetchOpenRouterPricing() {
+  const res = await fetch(OPENROUTER_MODELS_URL, {
+    headers: { 'content-type': 'application/json' },
+    signal: AbortSignal.timeout(OPENROUTER_FETCH_TIMEOUT_MS)
+  });
+  if (!res.ok) throw new Error(`models API HTTP ${res.status}`);
+
+  const body = await res.json();
+  const models = Array.isArray(body?.data) ? body.data : [];
+  const queue = models
+    .filter(model => authorProviderName(model.id))
+    .map(model => ({
+      id: model.id,
+      fallback: openRouterListPricingToRates(model.pricing)
+    }));
+
+  const result = {};
+  await mapWithConcurrency(queue, OPENROUTER_CONCURRENCY, async ({ id, fallback }) => {
+    const pricing = await fetchOpenRouterAuthorPricing(id, fallback);
+    if (pricing) result[id] = pricing;
+  });
+
+  return result;
+}
+
+async function fetchOpenRouterAuthorPricing(modelId, fallback) {
+  const authorName = authorProviderName(modelId);
+  if (!authorName) return fallback;
+
+  try {
+    const url = `https://openrouter.ai/api/v1/models/${modelId}/endpoints`;
+    const res = await fetch(url, {
+      headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(OPENROUTER_FETCH_TIMEOUT_MS)
+    });
+    if (!res.ok) return fallback;
+
+    const body = await res.json();
+    const endpoints = body?.data?.endpoints;
+    if (!Array.isArray(endpoints)) return fallback;
+
+    const authorEndpoint = endpoints.find(ep => ep?.provider_name === authorName);
+    const pricing = authorEndpoint?.pricing;
+    if (!pricing) return fallback;
+
+    const input = parseOpenRouterPrice(pricing.prompt);
+    const output = parseOpenRouterPrice(pricing.completion);
+    if (input == null || output == null) return fallback;
+
+    return {
+      input_cost_per_token: input,
+      output_cost_per_token: output,
+      cache_read_input_token_cost: parseOpenRouterPrice(pricing.input_cache_read),
+      cache_creation_input_token_cost: parseOpenRouterPrice(pricing.input_cache_write)
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function openRouterListPricingToRates(pricing) {
+  if (!pricing) return null;
+  const input = parseOpenRouterPrice(pricing.prompt);
+  const output = parseOpenRouterPrice(pricing.completion);
+  if (input == null || output == null) return null;
+  return {
+    input_cost_per_token: input,
+    output_cost_per_token: output
+  };
+}
+
+function parseOpenRouterPrice(value) {
+  if (value == null || value === '') return null;
+  const price = Number(value);
+  return Number.isFinite(price) && price >= 0 ? price : null;
+}
+
+function authorProviderName(modelId) {
+  const prefix = String(modelId || '').split('/')[0].toLowerCase();
+  const names = {
+    'z-ai': 'Z.AI',
+    'x-ai': 'xAI',
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    google: 'Google',
+    'meta-llama': 'Meta',
+    mistralai: 'Mistral',
+    deepseek: 'DeepSeek',
+    qwen: 'Alibaba',
+    cohere: 'Cohere',
+    perplexity: 'Perplexity',
+    moonshotai: 'Moonshot AI'
+  };
+  return names[prefix] || null;
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 function providerToDatasetPrefix(provider) {
@@ -288,12 +466,13 @@ function providerToDatasetPrefix(provider) {
     deepseek: 'deepseek',
     qwen: 'qwen',
     xai: 'x-ai',
-    zai: 'z-ai'
+    zai: 'zai'
   };
   return prefixes[provider] || provider;
 }
 
 function providerToOpenRouterPrefix(provider) {
+  if (provider === 'zai') return 'z-ai';
   return providerToDatasetPrefix(provider);
 }
 
@@ -324,6 +503,96 @@ function litellmEntryToRates(entry) {
     cacheWrite:         entry.cache_creation_input_token_cost ?? 0,
     cacheWriteAbove200k: entry.cache_creation_input_token_cost_above_200k_tokens,
   };
+}
+
+function findFuzzyDatasetHit(id, data) {
+  if (!id || id.length < 5) return null;
+  const normalizedId = normalizeComparableModelId(id);
+  if (!normalizedId || normalizedId.length < 5) return null;
+
+  const entries = Object.entries(data).sort((a, b) => fuzzyKeyScore(b[0], id) - fuzzyKeyScore(a[0], id));
+  for (const [key, val] of entries) {
+    if (isExcluded(key)) continue;
+    const keyBare = bareModelId(key.toLowerCase());
+    const normalizedKey = normalizeComparableModelId(keyBare);
+    if (!normalizedKey || normalizedKey.length < 5) continue;
+
+    const related =
+      normalizedKey === normalizedId ||
+      normalizedKey.startsWith(`${normalizedId}-`) ||
+      normalizedId.startsWith(`${normalizedKey}-`);
+    if (!related) continue;
+
+    const rates = litellmEntryToRates(val);
+    if (rates) return rates;
+  }
+  return null;
+}
+
+function fuzzyKeyScore(key, id) {
+  const lower = key.toLowerCase();
+  const provider = id.split(/[-.]/)[0];
+  let score = key.length;
+  if (provider && lower.startsWith(`${provider}/`)) score += 10_000;
+  if (lower.startsWith('openrouter/')) score -= 5_000;
+  if (lower.startsWith('vertex_ai/') || lower.startsWith('bedrock/')) score -= 2_000;
+  if (lower.includes('/')) score += 100;
+  return score;
+}
+
+function bareModelId(id) {
+  return String(id || '').toLowerCase().split('/').at(-1);
+}
+
+function normalizeComparableModelId(id) {
+  return normalizeVersionSeparator(String(id || '').toLowerCase()) || String(id || '').toLowerCase();
+}
+
+function normalizeVersionSeparator(id) {
+  const chars = String(id || '').split('');
+  let changed = false;
+  const result = chars.map((char, index) => {
+    if (char !== '-' || index === 0 || index === chars.length - 1) return char;
+    if (!isAsciiDigit(chars[index - 1]) || !isAsciiDigit(chars[index + 1])) return char;
+    const multiDigitBefore = index >= 2 && isAsciiDigit(chars[index - 2]);
+    const multiDigitAfter = index + 2 < chars.length && isAsciiDigit(chars[index + 2]);
+    if (multiDigitBefore || multiDigitAfter) return char;
+    changed = true;
+    return '.';
+  }).join('');
+  return changed ? result : null;
+}
+
+function stripUnknownSuffixes(id) {
+  const parts = String(id || '').split('-');
+  const maxStrip = Math.min(parts.length - 1, MAX_SUFFIX_STRIP_SEGMENTS);
+  const results = [];
+  for (let strip = 1; strip <= maxStrip; strip += 1) {
+    const candidate = parts.slice(0, parts.length - strip).join('-');
+    if (candidate.length >= 2) results.push(candidate);
+  }
+  return results;
+}
+
+function stripUnknownPrefixes(id) {
+  const parts = String(id || '').split('-');
+  const maxSkip = Math.min(parts.length - 1, MAX_PREFIX_STRIP_SEGMENTS);
+  const results = [];
+  for (let skip = 1; skip <= maxSkip; skip += 1) {
+    const candidate = parts.slice(skip).join('-');
+    if (candidate.length >= 2) {
+      results.push(candidate, ...stripUnknownSuffixes(candidate));
+    }
+  }
+  return results;
+}
+
+function isAsciiDigit(char) {
+  return char >= '0' && char <= '9';
+}
+
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean)));
 }
 
 function tieredCost(tokens, basePrice, tiers) {
