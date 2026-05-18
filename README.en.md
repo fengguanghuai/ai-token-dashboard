@@ -22,7 +22,8 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 
 - **Multi-source collection** — Claude Code, Codex CLI, Gemini CLI, Hermes Agent, OpenClaw
 - **Two views** — interactive usage dashboard (`/`) and a printable retrospective page (`/review`)
-- **Cost tracking** — per-model cost estimation via LiteLLM pricing data
+- **Cost tracking** — per-model cost estimation via bundled LiteLLM + OpenRouter pricing caches
+- **In-app collection** — trigger a local collection run from the dashboard's top-right **Collect** button (loopback only)
 - **Multi-device** — optional push mode to aggregate usage from multiple machines into a single hub
 - **Docker-ready** — one-command deployment as a central ingest server
 - **Pure JavaScript** — no Rust toolchain, no native binaries, no extra CLIs required
@@ -77,8 +78,24 @@ Usage data is written to `data/usage.sqlite`. The `data/` directory is gitignore
 ### Development
 
 ```bash
-npm run dev   # Vite dev server with HMR on http://localhost:5173
+npm run dev   # Start both the API server and the Vite dev server
 ```
+
+Development mode uses two ports:
+
+```
+http://localhost:4173 # API server
+http://localhost:5173 # Vite frontend with HMR
+```
+
+You can also start them separately:
+
+```bash
+npm run dev:server # API server only, default port 4173
+npm run dev:client # Vite frontend only, port 5173
+```
+
+The dashboard's **Collect** button calls `POST /api/collect` and polls `GET /api/collect/status`. The collect endpoint is restricted to loopback requests.
 
 ---
 
@@ -122,8 +139,22 @@ Data is written to the mounted `./data` volume. **Local log collection should ru
 | Environment variable | Default | Description |
 |---------------------|---------|-------------|
 | `PORT` | `4173` | HTTP server port |
+| `API_PORT` | `4173` | API server port used by `npm run dev` |
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |
 | `INGEST_TOKEN` | _(unset)_ | If set, `/api/ingest` requires `Authorization: Bearer <token>` |
+
+### Pricing Caches
+
+The repository includes two bundled pricing caches:
+
+- `data/pricing-litellm.json`
+- `data/pricing-openrouter.json`
+
+Normal collection prefers these local caches, so cost estimation does not need network access. To refresh upstream pricing manually, run:
+
+```bash
+npm run pricing:update
+```
 
 CLI flags for `npm run collect`:
 
@@ -138,10 +169,12 @@ CLI flags for `npm run collect`:
 
 ## Privacy & Security
 
-- All data collection reads **local files only** — no network calls are made during collection.
+- All data collection reads **local files only** — normal collection makes no network calls.
+- `npm run pricing:update` intentionally contacts upstream pricing sources to refresh local caches.
 - Nothing is uploaded unless you explicitly pass `--push`.
 - `--push` sends data only to the URL you provide.
 - When `INGEST_TOKEN` is set, the `/api/ingest` endpoint requires a Bearer token.
+- `POST /api/collect` only accepts loopback requests, so remote pages cannot trigger local log scans.
 - Do not commit `data/usage.sqlite`, `.env`, or any exported data files.
 
 ---
@@ -151,9 +184,11 @@ CLI flags for `npm run collect`:
 ```
 src/
 ├── collect.mjs          # CLI entry point for data collection
+├── dev.mjs              # Development mode: API server + Vite
 ├── server.mjs           # HTTP server + API
 ├── db.mjs               # SQLite schema and upsert helpers
-├── pricing.mjs          # LiteLLM-based cost estimation
+├── pricing.mjs          # LiteLLM + OpenRouter pricing lookup and cost estimation
+├── update-pricing.mjs   # Refresh local pricing caches
 ├── collectors/          # Per-tool data collectors
 │   ├── claude-code.mjs
 │   ├── codex.mjs
@@ -165,6 +200,9 @@ src/
     ├── dashboard/       # Main usage dashboard (React)
     ├── review/          # Retrospective view (React)
     └── shared/          # Shared utilities
+data/
+├── pricing-litellm.json     # Bundled LiteLLM pricing cache
+└── pricing-openrouter.json  # Bundled OpenRouter pricing cache
 ```
 
 ---

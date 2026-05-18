@@ -22,7 +22,8 @@
 
 - **多源采集** — 支持 Claude Code、Codex CLI、Gemini CLI、Hermes Agent、OpenClaw
 - **双视图** — 交互式用量看板（`/`）和适合阅读与打印的复盘页（`/review`）
-- **成本追踪** — 基于 LiteLLM 定价数据，按模型估算 token 费用
+- **成本追踪** — 基于随仓库提供的 LiteLLM + OpenRouter 定价缓存，按模型估算 token 费用
+- **页面内采集** — 在看板右上角点击「采集」即可触发一次本机采集（仅允许本机访问）
 - **多设备汇聚** — 可选推送模式，将多台机器的用量合并到单一中心节点
 - **Docker 支持** — 一条命令部署中心 ingest 服务
 - **纯 JavaScript** — 无需 Rust 工具链、无本地二进制、无额外 CLI 依赖
@@ -77,8 +78,24 @@ http://localhost:4173/review # 复盘视图
 ### 前端开发模式
 
 ```bash
-npm run dev   # 启动 Vite 开发服务器（HMR），地址：http://localhost:5173
+npm run dev   # 同时启动 API 服务和 Vite 开发服务器
 ```
+
+开发模式会占用两个端口：
+
+```
+http://localhost:4173 # API 服务
+http://localhost:5173 # Vite 前端开发页面（HMR）
+```
+
+如需分别启动：
+
+```bash
+npm run dev:server # 只启动 API 服务，默认端口 4173
+npm run dev:client # 只启动 Vite 前端，端口 5173
+```
+
+看板右上角的「采集」按钮会调用本机接口 `POST /api/collect`，并通过 `GET /api/collect/status` 轮询进度。该接口只允许 loopback 本机访问。
 
 ---
 
@@ -122,8 +139,22 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
 | `PORT` | `4173` | HTTP 服务端口 |
+| `API_PORT` | `4173` | `npm run dev` 中 API 服务端口 |
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
 | `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
+
+### 定价缓存
+
+仓库内置两份定价缓存：
+
+- `data/pricing-litellm.json`
+- `data/pricing-openrouter.json`
+
+正常采集会优先使用这些本地缓存，因此不会为了估算价格而访问网络。需要刷新上游价格时可手动运行：
+
+```bash
+npm run pricing:update
+```
 
 `npm run collect` 的 CLI 参数：
 
@@ -138,10 +169,12 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 ## 隐私与安全
 
-- 所有采集操作只读取**本机文件**，采集过程中不发起任何网络请求。
+- 所有采集操作只读取**本机文件**，正常采集过程中不发起任何网络请求。
+- `npm run pricing:update` 会主动访问上游定价源，用于刷新本地价格缓存。
 - 除非显式传入 `--push`，否则不会上传任何数据。
 - `--push` 只向你提供的 URL 发送数据。
 - 设置 `INGEST_TOKEN` 后，`/api/ingest` 接口需要 Bearer token 鉴权。
+- `POST /api/collect` 仅允许从本机触发，避免远程页面随意扫描你的本地日志。
 - 不要将 `data/usage.sqlite`、`.env` 或任何采集导出文件提交到 Git。
 
 ---
@@ -151,9 +184,11 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 ```
 src/
 ├── collect.mjs          # 数据采集 CLI 入口
+├── dev.mjs              # 开发模式：同时启动 API 与 Vite
 ├── server.mjs           # HTTP 服务器 + API
 ├── db.mjs               # SQLite schema 与 upsert 辅助函数
-├── pricing.mjs          # 基于 LiteLLM 的成本估算
+├── pricing.mjs          # LiteLLM + OpenRouter 定价匹配与成本估算
+├── update-pricing.mjs   # 刷新本地定价缓存
 ├── collectors/          # 各工具采集器
 │   ├── claude-code.mjs
 │   ├── codex.mjs
@@ -165,6 +200,9 @@ src/
     ├── dashboard/       # 主用量看板（React）
     ├── review/          # 复盘视图（React）
     └── shared/          # 共享工具函数
+data/
+├── pricing-litellm.json     # 随仓库提供的 LiteLLM 定价缓存
+└── pricing-openrouter.json  # 随仓库提供的 OpenRouter 定价缓存
 ```
 
 ---
