@@ -238,7 +238,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
   if (tab === 'runs')     { columns = runColumns;     rows = runs;      initialSort = { field: 'collectedAt', dir: 'desc' }; emptyText = '暂无采集记录'; }
 
   const exportCSV = () => {
-    U.downloadCSV(`tokens-${tab}-${new Date().toISOString().slice(0,10)}.csv`, rows, columns);
+    U.downloadCSV(`tokens-${tab}-${U.daysAgo(0)}.csv`, rows, columns);
   };
 
   return (

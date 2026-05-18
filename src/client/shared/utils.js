@@ -83,18 +83,37 @@ function formatTs(v) {
   return v.replace('T', ' ').slice(0, 16);
 }
 
+function localDateStr(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
+function parseLocalDate(value) {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
 function daysAgo(n) {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
+}
+
+function addDays(dateStr, days) {
+  const d = parseLocalDate(dateStr);
+  d.setDate(d.getDate() + days);
+  return localDateStr(d);
 }
 
 function rangeDates(startStr, endStr) {
   const out = [];
-  const s = new Date(startStr), e = new Date(endStr);
+  const s = parseLocalDate(startStr), e = parseLocalDate(endStr);
   for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
+    out.push(localDateStr(d));
   }
   return out;
 }
@@ -183,7 +202,7 @@ export const U = {
   PALETTE, PALETTE_FALLBACK, getSourceColor,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,
-  daysAgo, rangeDates,
+  localDateStr, daysAgo, addDays, rangeDates,
   filterDaily, aggregateTotals, groupByDate, uniqueValues,
   downloadCSV, projectLabel, alpha
 };

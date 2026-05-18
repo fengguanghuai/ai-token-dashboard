@@ -52,7 +52,7 @@ export function App() {
           ...data,
           SOURCES,
           HOURLY,
-          today: new Date().toISOString().slice(0, 10)
+          today: U.daysAgo(0)
         });
         setLoadError(null);
       })
@@ -210,12 +210,8 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
   const compareData = useMemo(() => {
     if (!filters.compare) return { rows: null, dates: null, totals: null };
     const days = dates.length;
-    const compareEnd = new Date(filters.startDate);
-    compareEnd.setDate(compareEnd.getDate() - 1);
-    const compareStart = new Date(compareEnd);
-    compareStart.setDate(compareStart.getDate() - (days - 1));
-    const startStr = compareStart.toISOString().slice(0, 10);
-    const endStr   = compareEnd.toISOString().slice(0, 10);
+    const endStr = U.addDays(filters.startDate, -1);
+    const startStr = U.addDays(endStr, -(days - 1));
     const rows  = U.filterDaily(M.daily, { ...filters, startDate: startStr, endDate: endStr });
     const cDates = U.rangeDates(startStr, endStr);
     return { rows, dates: cDates, totals: U.aggregateTotals(rows) };
