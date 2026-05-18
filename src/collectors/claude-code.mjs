@@ -36,8 +36,16 @@ export function getClaudeRoots() {
   ];
 }
 
-export function getScanRoots() {
-  return getClaudeRoots().flatMap((root) => [
+export async function getScanRoots() {
+  const envRoots = splitPathList(process.env.CLAUDE_CONFIG_DIR);
+  const roots = envRoots.length
+    ? envRoots
+    : [
+        ...getClaudeRoots(),
+        ...await getClaudeDesktopLocalAgentRoots()
+      ];
+
+  return unique(roots).flatMap((root) => [
     { type: 'projects', path: join(root, 'projects') },
     { type: 'transcripts', path: join(root, 'transcripts') }
   ]);
@@ -62,6 +70,35 @@ async function collectJsonlFiles(dir) {
     }
   }
   return results;
+}
+
+async function getClaudeDesktopLocalAgentRoots() {
+  if (process.platform !== 'darwin') return [];
+
+  const base = join(homedir(), 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+  const sessionDirs = await collectClaudeDirs(base);
+  return sessionDirs.filter((dir) => /[/\\]local_[^/\\]+[/\\]\.claude$/.test(dir));
+}
+
+async function collectClaudeDirs(dir) {
+  const results = [];
+  const entries = await safeReaddir(dir);
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (!entry.isDirectory()) continue;
+
+    if (entry.name === '.claude') {
+      results.push(fullPath);
+      continue;
+    }
+
+    results.push(...await collectClaudeDirs(fullPath));
+  }
+  return results;
+}
+
+function unique(values) {
+  return [...new Set(values)];
 }
 
 /**
@@ -180,7 +217,7 @@ export async function collect(pricingData = null) {
   // workspaceModelKey ("workspaceDir::model") -> aggregated token counts
   const wmMap = new Map();
 
-  for (const root of getScanRoots()) {
+  for (const root of await getScanRoots()) {
     const filePaths = await collectJsonlFiles(root.path);
     for (const filePath of filePaths) {
       const workspaceKey = workspaceKeyFromPath(root, filePath);
