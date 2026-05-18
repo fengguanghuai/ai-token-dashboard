@@ -9,7 +9,7 @@
 
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -21,17 +21,47 @@ export const SOURCE_LABEL = 'Claude Code';
 // ---------------------------------------------------------------------------
 
 /**
- * Return the Claude Code projects directory for the current OS.
- *
- * macOS/Linux : ~/.claude/projects/
- * Windows     : %APPDATA%\Claude\projects\
+ * Return Claude Code data roots. Claude Code has used both ~/.claude and
+ * ~/.config/claude layouts; CLAUDE_CONFIG_DIR may contain comma-separated
+ * custom roots. Each root is expected to contain a projects/ directory.
  */
-export function getProjectsDir() {
-  if (process.platform === 'win32') {
-    const base = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
-    return join(base, 'Claude', 'projects');
+export function getClaudeRoots() {
+  const envRoots = splitPathList(process.env.CLAUDE_CONFIG_DIR);
+  if (envRoots.length) return envRoots;
+
+  const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  return [
+    join(configHome, 'claude'),
+    join(homedir(), '.claude')
+  ];
+}
+
+export function getScanRoots() {
+  return getClaudeRoots().flatMap((root) => [
+    { type: 'projects', path: join(root, 'projects') },
+    { type: 'transcripts', path: join(root, 'transcripts') }
+  ]);
+}
+
+function splitPathList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function collectJsonlFiles(dir) {
+  const results = [];
+  const entries = await safeReaddir(dir);
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...await collectJsonlFiles(fullPath));
+    } else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+      results.push(fullPath);
+    }
   }
-  return join(homedir(), '.claude', 'projects');
+  return results;
 }
 
 /**
@@ -88,7 +118,7 @@ async function parseSessionFile(filePath) {
       timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : null,
       model: obj.message.model || obj.model || 'unknown',
       usage: obj.message.usage,
-      costUSD: typeof obj.costUSD === 'number' ? obj.costUSD : 0
+      costUSD: typeof obj.costUSD === 'number' ? obj.costUSD : 0,
     });
   }
 
@@ -145,58 +175,21 @@ function addInto(target, tokens) {
  * @returns {{ graphJson: object, modelsJson: object }}
  */
 export async function collect(pricingData = null) {
-  const projectsDir = getProjectsDir();
-  const projectEntries = await safeReaddir(projectsDir);
-
   // dailyKey ("YYYY-MM-DD::model") -> aggregated token counts
   const dailyMap = new Map();
   // workspaceModelKey ("workspaceDir::model") -> aggregated token counts
   const wmMap = new Map();
 
-  for (const projectEntry of projectEntries) {
-    if (!projectEntry.isDirectory()) continue;
-
-    const projectPath = join(projectsDir, projectEntry.name);
-    const workspaceKey = projectEntry.name;
-    const workspaceLabel = decodeWorkspaceLabel(workspaceKey);
-
-    const sessionEntries = await safeReaddir(projectPath);
-
-    for (const sessionEntry of sessionEntries) {
-      if (!sessionEntry.isFile() || !sessionEntry.name.endsWith('.jsonl')) continue;
-
-      const records = await parseSessionFile(join(projectPath, sessionEntry.name));
+  for (const root of getScanRoots()) {
+    const filePaths = await collectJsonlFiles(root.path);
+    for (const filePath of filePaths) {
+      const workspaceKey = workspaceKeyFromPath(root, filePath);
+      const workspaceLabel = decodeWorkspaceLabel(workspaceKey);
+      const records = await parseSessionFile(filePath);
 
       for (const record of records) {
-        const date = localDateFromTimestamp(record.timestamp);
-        const model = normalizeModelForGrouping(record.model);
         const tokens = extractTokens(record.usage);
-        const calculatedCost = calculateCost(model, tokens, pricingData);
-        const costUSD = calculatedCost > 0 ? calculatedCost : record.costUSD;
-
-        // --- daily ---
-        const dk = `${date}::${model}`;
-        if (!dailyMap.has(dk)) {
-          dailyMap.set(dk, { date, model, ...zeroTokens(), cost: 0 });
-        }
-        const dayAgg = dailyMap.get(dk);
-        addInto(dayAgg, tokens);
-        dayAgg.cost += costUSD;
-
-        // --- workspace+model ---
-        const wmk = `${workspaceKey}::${model}`;
-        if (!wmMap.has(wmk)) {
-          wmMap.set(wmk, {
-            workspace: workspaceKey,
-            workspaceLabel,
-            model,
-            ...zeroTokens(),
-            cost: 0
-          });
-        }
-        const wmAgg = wmMap.get(wmk);
-        addInto(wmAgg, tokens);
-        wmAgg.cost += costUSD;
+        aggregateRecord({ ...record, tokens, workspaceKey, workspaceLabel }, dailyMap, wmMap, pricingData);
       }
     }
   }
@@ -249,4 +242,43 @@ export async function collect(pricingData = null) {
   const modelsJson = { entries };
 
   return { graphJson, modelsJson };
+}
+
+function workspaceKeyFromPath(root, filePath) {
+  const rel = relative(root.path, filePath);
+  const firstSegment = rel.split(/[\\/]/).find(Boolean);
+  if (root.type === 'projects' && firstSegment) return firstSegment;
+  return `transcripts:${firstSegment || filePath}`;
+}
+
+function aggregateRecord(record, dailyMap, wmMap, pricingData) {
+  const date = localDateFromTimestamp(record.timestamp);
+  const model = normalizeModelForGrouping(record.model);
+  const tokens = record.tokens || extractTokens(record.usage);
+  const calculatedCost = calculateCost(model, tokens, pricingData);
+  const costUSD = calculatedCost > 0 ? calculatedCost : record.costUSD;
+
+  // --- daily ---
+  const dk = `${date}::${model}`;
+  if (!dailyMap.has(dk)) {
+    dailyMap.set(dk, { date, model, ...zeroTokens(), cost: 0 });
+  }
+  const dayAgg = dailyMap.get(dk);
+  addInto(dayAgg, tokens);
+  dayAgg.cost += costUSD;
+
+  // --- workspace+model ---
+  const wmk = `${record.workspaceKey}::${model}`;
+  if (!wmMap.has(wmk)) {
+    wmMap.set(wmk, {
+      workspace: record.workspaceKey,
+      workspaceLabel: record.workspaceLabel,
+      model,
+      ...zeroTokens(),
+      cost: 0
+    });
+  }
+  const wmAgg = wmMap.get(wmk);
+  addInto(wmAgg, tokens);
+  wmAgg.cost += costUSD;
 }

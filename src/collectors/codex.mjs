@@ -19,7 +19,7 @@
 
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -50,17 +50,34 @@ export const SOURCE_LABEL = 'Codex CLI';
 // Path resolution
 // ---------------------------------------------------------------------------
 
-function getCodexHome() {
-  // Honour CODEX_HOME env var override
-  return process.env.CODEX_HOME || join(homedir(), '.codex');
+function getCodexHomes() {
+  return splitPathList(process.env.CODEX_HOME, [join(homedir(), '.codex')]);
 }
 
-function getSessionsDir() {
-  return join(getCodexHome(), 'sessions');
+function getSessionRoots() {
+  return getCodexHomes().flatMap((home) => [
+    join(home, 'sessions'),
+    join(home, 'archived_sessions')
+  ]);
 }
 
-function getArchivedSessionsDir() {
-  return join(getCodexHome(), 'archived_sessions');
+function getHeadlessRoots() {
+  const explicit = splitPathList(process.env.TOKSCALE_HEADLESS_DIR, []);
+  const roots = explicit.length
+    ? explicit
+    : [
+        join(homedir(), '.config', 'tokscale', 'headless'),
+        join(homedir(), 'Library', 'Application Support', 'tokscale', 'headless')
+      ];
+  return roots.map((root) => join(root, 'codex'));
+}
+
+function splitPathList(value, fallback) {
+  const paths = String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return paths.length ? paths : fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,18 +278,16 @@ function extractModel(obj) {
 // ---------------------------------------------------------------------------
 
 export async function collect(pricingData = null) {
-  // Scan both active and archived sessions
-  const [activePaths, archivedPaths] = await Promise.all([
-    collectJsonlFiles(getSessionsDir()),
-    collectJsonlFiles(getArchivedSessionsDir()),
-  ]);
-  const filePaths = [...activePaths, ...archivedPaths];
+  // Scan active, archived, and optional tokscale headless Codex outputs.
+  const roots = [...getSessionRoots(), ...getHeadlessRoots()];
+  const nestedPaths = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
+  const filePaths = [...new Set(nestedPaths.flat())];
 
   const dailyMap = new Map();   // "date::model" → aggregated
   const wmMap    = new Map();   // "workspace::model" → aggregated
 
   for (const filePath of filePaths) {
-    const sessionId = filePath.split('/').pop().replace(/\.jsonl$/, '');
+    const sessionId = basename(filePath).replace(/\.jsonl$/, '');
     const events    = await parseSessionFile(filePath, sessionId);
 
     for (const { date, model, workspace, tokens } of events) {
