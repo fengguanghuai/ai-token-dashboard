@@ -99,6 +99,7 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
 function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
   const [tab, setTab] = useState('sources');
   const [search, setSearch] = useState('');
+  const formatRunTime = r => U.formatTs(r.collectedAt);
 
   // Aggregate by source
   const bySource = useMemo(() => {
@@ -212,8 +213,8 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
 
   const runColumns = [
     { field: 'collectedAt', title: '时间', render: r => (
-      <span className="mono" style={{fontSize: 11.5, color: 'var(--text-2)'}}>{r.collectedAt}</span>
-    ), width: 160 },
+      <span className="mono" style={{fontSize: 11.5, color: 'var(--text-2)', whiteSpace: 'nowrap'}}>{formatRunTime(r)}</span>
+    ), value: formatRunTime, width: 160 },
     { field: 'source', title: '来源', render: r => (
       <span className="tag"><span className="tag-dot" style={{background: U.getSourceColor(r.source)}}/>{r.source}</span>
     ), width: 140 },
@@ -296,7 +297,7 @@ function DrillDrawer({ drill, daily, onClose }) {
     if (kind === 'model')  { title = row.model;  sub = row.source; filterFn = r => r.source === row.source && r.model === row.model; }
     if (kind === 'session'){ title = row.projectPath || row.sessionId; sub = `${row.source} · ${row.device}`;
       filterFn = r => r.source === row.source; /* session doesn't tie to daily directly — show source's daily */ }
-    if (kind === 'run')    { title = `采集: ${row.source}`; sub = row.collectedAt; filterFn = () => false; }
+    if (kind === 'run')    { title = `采集: ${row.source}`; sub = U.formatTs(row.collectedAt); filterFn = () => false; }
 
     const matching = daily.filter(filterFn);
     const totals = U.aggregateTotals(matching);
