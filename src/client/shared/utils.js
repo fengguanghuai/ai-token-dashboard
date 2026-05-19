@@ -80,7 +80,22 @@ function deltaPct(curr, prev) {
 
 function formatTs(v) {
   if (!v) return '—';
-  return v.replace('T', ' ').slice(0, 16);
+  const text = String(v).trim();
+  const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  const value = new Date(hasZone ? normalized : `${normalized}Z`);
+  if (Number.isNaN(value.getTime())) return text.replace('T', ' ').slice(0, 16);
+
+  const parts = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(value);
+  const get = type => parts.find(part => part.type === type)?.value || '';
+  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
 }
 
 function localDateStr(date) {

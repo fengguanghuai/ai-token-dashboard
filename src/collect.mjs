@@ -50,6 +50,7 @@ async function collectLocal() {
         source: label,
         status: 'error',
         message: error.message,
+        collectedAt: exportPayload.collectedAt,
         command: `js-collector:${module}`
       };
       recordRun(db, run);
@@ -72,6 +73,7 @@ async function collectLocal() {
       source: label,
       status: dailyRows.length || sessionRows.length ? 'ok' : 'empty',
       message: `daily=${dailyRows.length}, workspace_model=${sessionRows.length}`,
+      collectedAt: exportPayload.collectedAt,
       command: `js-collector:${module}`
     };
     recordRun(db, run);

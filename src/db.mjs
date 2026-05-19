@@ -137,7 +137,14 @@ export function upsertSession(db, row) {
 
 export function recordRun(db, row) {
   db.prepare(`
-    INSERT INTO collection_runs(device, source, status, message, command)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(row.device, row.source, row.status, row.message || null, row.command || null);
+    INSERT INTO collection_runs(device, source, status, message, collected_at, command)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    row.device,
+    row.source,
+    row.status,
+    row.message || null,
+    row.collectedAt || new Date().toISOString(),
+    row.command || null
+  );
 }
