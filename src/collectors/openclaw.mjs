@@ -26,8 +26,8 @@
 
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync }              from 'node:fs';
-import { homedir }                 from 'node:os';
 import { join, basename, extname } from 'node:path';
+import { configuredPaths } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { canonicalProvider, localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -40,13 +40,7 @@ export const SOURCE_LABEL = 'OpenClaw';
 
 /** All roots that may contain OpenClaw agent data. */
 function getAgentRoots() {
-  const home = homedir();
-  return [
-    join(home, '.openclaw', 'agents'),   // current name
-    join(home, '.clawdbot', 'agents'),   // legacy rebrand history
-    join(home, '.moltbot',  'agents'),
-    join(home, '.moldbot',  'agents'),
-  ];
+  return configuredPaths('openclaw', 'agentRoots');
 }
 
 // ---------------------------------------------------------------------------

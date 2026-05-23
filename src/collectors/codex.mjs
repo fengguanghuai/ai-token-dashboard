@@ -18,8 +18,8 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
+import { configuredPaths, configuredStrings, envPathList } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -51,33 +51,20 @@ export const SOURCE_LABEL = 'Codex CLI';
 // ---------------------------------------------------------------------------
 
 function getCodexHomes() {
-  return splitPathList(process.env.CODEX_HOME, [join(homedir(), '.codex')]);
+  return envPathList(process.env.CODEX_HOME, configuredPaths('codex', 'homes'));
 }
 
 function getSessionRoots() {
-  return getCodexHomes().flatMap((home) => [
-    join(home, 'sessions'),
-    join(home, 'archived_sessions')
-  ]);
+  const subdirs = configuredStrings('codex', 'sessionSubdirs', ['sessions', 'archived_sessions']);
+  return getCodexHomes().flatMap((home) => subdirs.map((subdir) => join(home, subdir)));
 }
 
 function getHeadlessRoots() {
-  const explicit = splitPathList(process.env.TOKSCALE_HEADLESS_DIR, []);
-  const roots = explicit.length
-    ? explicit
-    : [
-        join(homedir(), '.config', 'tokscale', 'headless'),
-        join(homedir(), 'Library', 'Application Support', 'tokscale', 'headless')
-      ];
+  const roots = envPathList(
+    process.env.AI_TOKEN_DASHBOARD_HEADLESS_DIR,
+    configuredPaths('codex', 'headlessRoots')
+  );
   return roots.map((root) => join(root, 'codex'));
-}
-
-function splitPathList(value, fallback) {
-  const paths = String(value || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return paths.length ? paths : fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,12 +132,36 @@ function summaryEqual(a, b) {
 }
 
 function summaryDelta(current, previous) {
+  if (
+    current.input < previous.input ||
+    current.output < previous.output ||
+    current.cached < previous.cached ||
+    current.reasoning < previous.reasoning
+  ) {
+    return null;
+  }
+
   return {
-    input:     Math.max(0, current.input     - previous.input),
-    output:    Math.max(0, current.output    - previous.output),
-    cached:    Math.max(0, current.cached    - previous.cached),
-    reasoning: Math.max(0, current.reasoning - previous.reasoning)
+    input:     current.input     - previous.input,
+    output:    current.output    - previous.output,
+    cached:    current.cached    - previous.cached,
+    reasoning: current.reasoning - previous.reasoning
   };
+}
+
+function summaryTotal(s) {
+  return s.input + s.output + s.cached + s.reasoning;
+}
+
+function looksLikeStaleRegression(current, previous, last) {
+  const previousTotal = summaryTotal(previous);
+  const currentTotal = summaryTotal(current);
+  const lastTotal = summaryTotal(last);
+
+  if (previousTotal <= 0 || currentTotal <= 0 || lastTotal <= 0) return false;
+
+  return currentTotal * 100 >= previousTotal * 98 ||
+         currentTotal + lastTotal * 2 >= previousTotal;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +238,10 @@ async function parseSessionFile(filePath, sessionId) {
       // Choose token increment
       let increment;
       if (lastUsage && totalUsage && previousTotal) {
+        if (!summaryDelta(totalUsage, previousTotal) &&
+            looksLikeStaleRegression(totalUsage, previousTotal, lastUsage)) {
+          continue;
+        }
         // Standard path: use last_token_usage as increment
         increment = lastUsage;
       } else if (lastUsage && totalUsage && !previousTotal) {
@@ -235,6 +250,12 @@ async function parseSessionFile(filePath, sessionId) {
       } else if (!lastUsage && totalUsage && previousTotal) {
         // Fallback: delta of cumulative totals
         increment = summaryDelta(totalUsage, previousTotal);
+        if (!increment) {
+          // Total went backwards (session context reset or stale event).
+          // Accept the new total as the new baseline to avoid future overcounting.
+          previousTotal = totalUsage;
+          continue;
+        }
       } else if (!lastUsage && totalUsage) {
         // Very first event, no last — use full total (legacy/degraded)
         increment = totalUsage;
@@ -278,7 +299,7 @@ function extractModel(obj) {
 // ---------------------------------------------------------------------------
 
 export async function collect(pricingData = null) {
-  // Scan active, archived, and optional tokscale headless Codex outputs.
+  // Scan active, archived, and optional headless Codex outputs.
   const roots = [...getSessionRoots(), ...getHeadlessRoots()];
   const nestedPaths = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
   const filePaths = [...new Set(nestedPaths.flat())];

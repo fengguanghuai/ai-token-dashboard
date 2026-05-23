@@ -10,6 +10,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, relative } from 'node:path';
+import { configuredBool, configuredPath, configuredPaths, envPathList } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -26,36 +27,26 @@ export const SOURCE_LABEL = 'Claude Code';
  * custom roots. Each root is expected to contain a projects/ directory.
  */
 export function getClaudeRoots() {
-  const envRoots = splitPathList(process.env.CLAUDE_CONFIG_DIR);
+  const envRoots = envPathList(process.env.CLAUDE_CONFIG_DIR);
   if (envRoots.length) return envRoots;
 
-  const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
-  return [
-    join(configHome, 'claude'),
-    join(homedir(), '.claude')
-  ];
+  return configuredPaths('claude', 'roots');
 }
 
 export async function getScanRoots() {
-  const envRoots = splitPathList(process.env.CLAUDE_CONFIG_DIR);
+  const envRoots = envPathList(process.env.CLAUDE_CONFIG_DIR);
+  const includeDesktopLocalAgent = configuredBool('claude', 'includeDesktopLocalAgent', true);
   const roots = envRoots.length
     ? envRoots
     : [
         ...getClaudeRoots(),
-        ...await getClaudeDesktopLocalAgentRoots()
+        ...(includeDesktopLocalAgent ? await getClaudeDesktopLocalAgentRoots() : [])
       ];
 
   return unique(roots).flatMap((root) => [
     { type: 'projects', path: join(root, 'projects') },
     { type: 'transcripts', path: join(root, 'transcripts') }
   ]);
-}
-
-function splitPathList(value) {
-  return String(value || '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 async function collectJsonlFiles(dir) {
@@ -75,7 +66,12 @@ async function collectJsonlFiles(dir) {
 async function getClaudeDesktopLocalAgentRoots() {
   if (process.platform !== 'darwin') return [];
 
-  const base = join(homedir(), 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+  const base = configuredPath(
+    'claude',
+    'desktopLocalAgentBase',
+    `${homedir()}/Library/Application Support/Claude/local-agent-mode-sessions`
+  );
+  if (!base) return [];
   const sessionDirs = await collectClaudeDirs(base);
   return sessionDirs.filter((dir) => /[/\\]local_[^/\\]+[/\\]\.claude$/.test(dir));
 }
@@ -127,6 +123,10 @@ function decodeWorkspaceLabel(dirName) {
 /**
  * Read one session JSONL file and return an array of assistant-turn records.
  * Each record carries { timestamp, model, usage, costUSD }.
+ *
+ * Claude Code can write multiple assistant usage snapshots for the same
+ * streamed response. Collapse message.id+requestId duplicates and keep the
+ * largest token value seen for each field.
  */
 async function parseSessionFile(filePath) {
   let text;
@@ -137,6 +137,7 @@ async function parseSessionFile(filePath) {
   }
 
   const records = [];
+  const dedupIndex = new Map();
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -151,15 +152,44 @@ async function parseSessionFile(filePath) {
     // Only assistant turns carry usage information
     if (obj.type !== 'assistant' || !obj.message?.usage) continue;
 
-    records.push({
+    const record = {
       timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : null,
       model: obj.message.model || obj.model || 'unknown',
       usage: obj.message.usage,
       costUSD: typeof obj.costUSD === 'number' ? obj.costUSD : 0,
-    });
+    };
+
+    const dedupKey = obj.message?.id && obj.requestId
+      ? `${obj.message.id}:${obj.requestId}`
+      : null;
+
+    if (dedupKey && dedupIndex.has(dedupKey)) {
+      const existing = records[dedupIndex.get(dedupKey)];
+      mergeUsageMax(existing.usage, record.usage);
+      existing.costUSD = Math.max(existing.costUSD || 0, record.costUSD || 0);
+      if (!existing.timestamp && record.timestamp) existing.timestamp = record.timestamp;
+      if (existing.model === 'unknown' && record.model !== 'unknown') existing.model = record.model;
+      continue;
+    }
+
+    if (dedupKey) dedupIndex.set(dedupKey, records.length);
+    records.push(record);
   }
 
   return records;
+}
+
+function mergeUsageMax(target, source) {
+  for (const key of [
+    'input_tokens',
+    'output_tokens',
+    'cache_read_input_tokens',
+    'cache_creation_input_tokens',
+    'reasoning_tokens',
+    'thinking_tokens'
+  ]) {
+    target[key] = Math.max(Number(target[key] || 0), Number(source[key] || 0));
+  }
 }
 
 // ---------------------------------------------------------------------------

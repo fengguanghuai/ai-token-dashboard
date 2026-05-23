@@ -7,6 +7,7 @@ const COLLECTORS = [
   { module: './collectors/claude-code.mjs', label: 'Claude Code' },
   { module: './collectors/hermes.mjs', label: 'Hermes Agent' },
   { module: './collectors/codex.mjs', label: 'Codex CLI' },
+  { module: './collectors/opencode.mjs', label: 'OpenCode' },
   { module: './collectors/gemini.mjs', label: 'Gemini CLI' },
   { module: './collectors/openclaw.mjs', label: 'OpenClaw' }
 ];
@@ -171,6 +172,7 @@ function sourceLabel(client) {
   const labels = {
     claude: 'Claude Code',
     codex: 'Codex CLI',
+    opencode: 'OpenCode',
     gemini: 'Gemini CLI',
     openclaw: 'OpenClaw',
     hermes: 'Hermes Agent'

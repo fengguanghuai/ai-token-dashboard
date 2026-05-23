@@ -9,9 +9,9 @@
  */
 
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { configuredPath, expandPath } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { canonicalProvider, inferProviderFromModel, localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
@@ -24,8 +24,8 @@ export const SOURCE_LABEL = 'Hermes Agent';
 
 function getDbPath() {
   const hermesHome = process.env.HERMES_HOME;
-  if (hermesHome) return join(hermesHome, 'state.db');
-  return join(homedir(), '.hermes', 'state.db');
+  if (hermesHome) return join(expandPath(hermesHome), 'state.db');
+  return configuredPath('hermes', 'dbPath');
 }
 
 // ---------------------------------------------------------------------------

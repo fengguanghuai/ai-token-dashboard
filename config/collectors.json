@@ -1,0 +1,40 @@
+{
+  "collectors": {
+    "claude": {
+      "roots": [
+        "~/.config/claude",
+        "~/.claude"
+      ],
+      "includeDesktopLocalAgent": true,
+      "desktopLocalAgentBase": "~/Library/Application Support/Claude/local-agent-mode-sessions"
+    },
+    "codex": {
+      "homes": [
+        "~/.codex"
+      ],
+      "sessionSubdirs": [
+        "sessions",
+        "archived_sessions"
+      ],
+      "headlessRoots": [
+        "~/.config/ai-token-dashboard/headless",
+        "~/Library/Application Support/ai-token-dashboard/headless"
+      ]
+    },
+    "hermes": {
+      "dbPath": "~/.hermes/state.db"
+    },
+    "opencode": {
+      "dataDir": "~/.local/share/opencode",
+      "extraDbPaths": []
+    },
+    "openclaw": {
+      "agentRoots": [
+        "~/.openclaw/agents",
+        "~/.clawdbot/agents",
+        "~/.moltbot/agents",
+        "~/.moldbot/agents"
+      ]
+    }
+  }
+}
