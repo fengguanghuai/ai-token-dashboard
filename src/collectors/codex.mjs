@@ -170,7 +170,7 @@ function looksLikeStaleRegression(current, previous, last) {
 
 /**
  * Parse a single Codex JSONL session file.
- * Returns an array of { date, model, workspace, tokens }.
+ * Returns an array of { timestamp, date, model, workspace, tokens }.
  */
 async function parseSessionFile(filePath, sessionId) {
   let text;
@@ -272,12 +272,13 @@ async function parseSessionFile(filePath, sessionId) {
       const tokens = summaryToTokens(increment);
 
       // Date from event timestamp
+      const timestamp = typeof entry.timestamp === 'string' ? entry.timestamp : '';
       let date = 'unknown';
-      if (entry.timestamp) {
-        date = localDateFromTimestamp(entry.timestamp);
+      if (timestamp) {
+        date = localDateFromTimestamp(timestamp);
       }
 
-      events.push({ date, model, workspace, tokens });
+      events.push({ timestamp, date, model, workspace, tokens });
     }
   }
 
@@ -306,12 +307,17 @@ export async function collect(pricingData = null) {
 
   const dailyMap = new Map();   // "date::model" → aggregated
   const wmMap    = new Map();   // "workspace::model" → aggregated
+  const seenEventKeys = new Set();
 
   for (const filePath of filePaths) {
     const sessionId = basename(filePath).replace(/\.jsonl$/, '');
     const events    = await parseSessionFile(filePath, sessionId);
 
-    for (const { date, model, workspace, tokens } of events) {
+    for (const { timestamp, date, model, workspace, tokens } of events) {
+      const eventKey = codexEventDedupKey({ timestamp, model, tokens });
+      if (eventKey && seenEventKeys.has(eventKey)) continue;
+      if (eventKey) seenEventKeys.add(eventKey);
+
       const workspaceKey = workspace || sessionId;
 
       // Daily
@@ -335,6 +341,19 @@ export async function collect(pricingData = null) {
   }
 
   return buildOutput(dailyMap, wmMap, pricingData);
+}
+
+function codexEventDedupKey({ timestamp, model, tokens }) {
+  if (!timestamp) return null;
+  return [
+    timestamp,
+    model,
+    tokens.input,
+    tokens.output,
+    tokens.cacheRead,
+    tokens.cacheWrite,
+    tokens.reasoning
+  ].join('::');
 }
 
 /**

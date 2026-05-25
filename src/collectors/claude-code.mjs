@@ -125,8 +125,9 @@ function decodeWorkspaceLabel(dirName) {
  * Each record carries { timestamp, model, usage, costUSD }.
  *
  * Claude Code can write multiple assistant usage snapshots for the same
- * streamed response. Collapse message.id+requestId duplicates and keep the
- * largest token value seen for each field.
+ * streamed response. Collapse message.id+requestId duplicates, fall back to
+ * message.id when requestId is absent, and keep the largest token value seen
+ * for each field.
  */
 async function parseSessionFile(filePath) {
   let text;
@@ -159,9 +160,7 @@ async function parseSessionFile(filePath) {
       costUSD: typeof obj.costUSD === 'number' ? obj.costUSD : 0,
     };
 
-    const dedupKey = obj.message?.id && obj.requestId
-      ? `${obj.message.id}:${obj.requestId}`
-      : null;
+    const dedupKey = dedupKeyForAssistant(obj);
 
     if (dedupKey && dedupIndex.has(dedupKey)) {
       const existing = records[dedupIndex.get(dedupKey)];
@@ -177,6 +176,12 @@ async function parseSessionFile(filePath) {
   }
 
   return records;
+}
+
+function dedupKeyForAssistant(obj) {
+  const messageId = obj.message?.id;
+  if (!messageId) return null;
+  return obj.requestId ? `${messageId}:${obj.requestId}` : `message:${messageId}`;
 }
 
 function mergeUsageMax(target, source) {
