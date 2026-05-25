@@ -84,6 +84,7 @@ export function inferProviderFromModel(model) {
   if (lower.includes('gemini') || lower.includes('google')) return 'google';
   if (lower.includes('grok')) return 'xai';
   if (lower.includes('deepseek')) return 'deepseek';
+  if (lower.includes('mimo') || lower.includes('xiaomi')) return 'xiaomi';
   if (lower.includes('mistral') || lower.includes('mixtral')) return 'mistral';
   if (lower.includes('llama') || /\bmeta\b/.test(lower)) return 'meta';
   if (lower.includes('qwen')) return 'qwen';
