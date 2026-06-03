@@ -20,10 +20,11 @@ const PERIOD_LABELS = {
   week: '本周',
   month: '本月',
   prev:  '上月',
-  '90d': '近 90 天'
+  '90d': '近 90 天',
+  all: '全部'
 };
 
-function getPeriod(id, today = new Date()) {
+function getPeriod(id, today = new Date(), rows = []) {
   const t = new Date(today); t.setHours(0,0,0,0);
   if (id === 'week') {
     const start = new Date(t); start.setDate(t.getDate() - 6);
@@ -79,6 +80,19 @@ function getPeriod(id, today = new Date()) {
       start: localDateStr(start),
       end:   localDateStr(t),
       pretty: `近 90 天`,
+      prev: null
+    };
+  }
+  if (id === 'all') {
+    const dates = rows.map(r => r.usageDate).filter(Boolean).sort();
+    const start = dates[0] || localDateStr(t);
+    const end = dates[dates.length - 1] || localDateStr(t);
+    return {
+      id,
+      label: '全部',
+      start,
+      end,
+      pretty: `${start} – ${end}`,
       prev: null
     };
   }

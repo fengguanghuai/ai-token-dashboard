@@ -62,15 +62,20 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, allDevices, allModels, onExport }) {
+function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport }) {
   const RANGES = [
     { id: '7d',  label: '7 天',  days: 7  },
     { id: '14d', label: '14 天', days: 14 },
     { id: '30d', label: '30 天', days: 30 },
-    { id: '90d', label: '90 天', days: 90 }
+    { id: '90d', label: '90 天', days: 90 },
+    { id: 'all', label: '全部' }
   ];
 
   const setRange = (r) => {
+    if (r.id === 'all') {
+      setF({ ...f, rangeId: r.id, startDate: availableRange.startDate, endDate: availableRange.endDate });
+      return;
+    }
     setF({ ...f, rangeId: r.id, startDate: U.daysAgo(r.days - 1), endDate: U.daysAgo(0) });
   };
 

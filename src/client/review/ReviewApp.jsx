@@ -63,7 +63,7 @@ function ReviewDashboard({ rawData }) {
   TODAY.setHours(0, 0, 0, 0);
 
   const [periodId, setPeriodId] = useState('month');
-  const period = useMemo(() => RU.getPeriod(periodId, TODAY), [periodId]);
+  const period = useMemo(() => RU.getPeriod(periodId, TODAY, rawData.daily), [periodId, rawData.daily]);
   const prevPeriod = useMemo(() => period.prev
     ? { start: period.prev.start, end: period.prev.end }
     : null, [period]);
@@ -122,7 +122,7 @@ function ReviewDashboard({ rawData }) {
   , [daily, period, prevDaily]);
 
   // Period nav
-  const ORDER = ['week', 'month', 'prev', '90d'];
+  const ORDER = ['week', 'month', 'prev', '90d', 'all'];
   const idx = ORDER.indexOf(periodId);
   const prevId = idx > 0 ? ORDER[idx - 1] : null;
   const nextId = idx < ORDER.length - 1 ? ORDER[idx + 1] : null;

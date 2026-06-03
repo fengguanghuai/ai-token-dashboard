@@ -190,6 +190,13 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
   const allSources = useMemo(() => Array.from(new Set(M.daily.map(r => r.source))), [M.daily]);
   const allDevices = useMemo(() => Array.from(new Set(M.daily.map(r => r.device))), [M.daily]);
   const allModels  = useMemo(() => Array.from(new Set(M.daily.map(r => r.model))).filter(Boolean), [M.daily]);
+  const availableRange = useMemo(() => {
+    const dates = M.daily.map(r => r.usageDate).filter(Boolean).sort();
+    return {
+      startDate: dates[0] || U.daysAgo(0),
+      endDate: dates[dates.length - 1] || U.daysAgo(0)
+    };
+  }, [M.daily]);
 
   // ───── Filtered data ─────
   const filtered = useMemo(() => {
@@ -298,6 +305,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
         allSources={allSources}
         allDevices={allDevices}
         allModels={allModels}
+        availableRange={availableRange}
         onExport={onExportAll} />
 
       {focusedSource && (
