@@ -251,20 +251,37 @@ button, input, select { font-family: inherit; color: inherit; }
 
 .filterbar {
   margin: 16px 0 20px;
-  padding: 12px;
+  padding: 12px 14px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-row {
+  width: 100%;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 12px;
 }
 
+.filter-row-secondary {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-2);
+}
+
 .filter-group {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-group-sources {
+  min-width: 0;
 }
 
 .filter-label {

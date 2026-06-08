@@ -43,7 +43,9 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
         </button>
         <button className={`btn btn-primary ${collecting ? 'loading' : ''}`} onClick={onCollect} disabled={collecting || refreshing}>
           <svg className={`icon ${collecting ? 'spin' : ''}`} viewBox="0 0 16 16" fill="none" style={{opacity:1}}>
-            <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M4 6.5h8M4 9.5h8" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round"/>
+            <path d="M3.5 4.5c0-.83 2.01-1.5 4.5-1.5s4.5.67 4.5 1.5v7c0 .83-2.01 1.5-4.5 1.5s-4.5-.67-4.5-1.5v-7Z" stroke="currentColor" strokeWidth="1.35"/>
+            <circle cx="8" cy="8" r="1.25" fill="currentColor"/>
           </svg>
           {collecting ? '采集中' : '采集'}
         </button>
@@ -93,69 +95,71 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
 
   return (
     <div className="filterbar">
-      <div className="filter-group">
-        <span className="filter-label">时间</span>
-        <div className="chip-row">
-          {RANGES.map(r => (
-            <button key={r.id}
-              className={`chip ${f.rangeId === r.id ? 'active' : ''}`}
-              onClick={() => setRange(r)}>{r.label}</button>
+      <div className="filter-row filter-row-primary">
+        <div className="filter-group">
+          <span className="filter-label">时间</span>
+          <div className="chip-row">
+            {RANGES.map(r => (
+              <button key={r.id}
+                className={`chip ${f.rangeId === r.id ? 'active' : ''}`}
+                onClick={() => setRange(r)}>{r.label}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="divider"/>
+
+        <div className="filter-group filter-group-sources">
+          <span className="filter-label">来源</span>
+          {allSources.map(s => (
+            <button key={s}
+              className={`pill ${f.sources.has(s) ? 'active' : ''}`}
+              style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
+              onClick={() => toggleSet('sources', s)}>
+              <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>
+              {s}
+            </button>
           ))}
         </div>
       </div>
 
-      <div className="divider"/>
+      <div className="filter-row filter-row-secondary">
+        <div className="filter-group">
+          <span className="filter-label">设备</span>
+          <MultiSelect
+            options={allDevices}
+            selected={f.devices}
+            onChange={v => setF({...f, devices: v})}
+            placeholder="全部设备"/>
+          <span className="filter-label" style={{marginLeft: 4}}>模型</span>
+          <MultiSelect
+            options={allModels}
+            selected={f.models}
+            onChange={v => setF({...f, models: v})}
+            placeholder="全部模型"/>
+        </div>
 
-      <div className="filter-group">
-        <span className="filter-label">来源</span>
-        {allSources.map(s => (
-          <button key={s}
-            className={`pill ${f.sources.has(s) ? 'active' : ''}`}
-            style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
-            onClick={() => toggleSet('sources', s)}>
-            <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>
-            {s}
+        <div className="filter-spacer"/>
+
+        {filtersActive > 0 && (
+          <button className="btn" onClick={clearAll}>
+            <svg className="icon" viewBox="0 0 16 16" fill="none">
+              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            清除筛选 · {filtersActive}
           </button>
-        ))}
-      </div>
-
-      <div className="divider"/>
-
-      <div className="filter-group">
-        <span className="filter-label">设备</span>
-        <MultiSelect
-          options={allDevices}
-          selected={f.devices}
-          onChange={v => setF({...f, devices: v})}
-          placeholder="全部设备"/>
-        <span className="filter-label" style={{marginLeft: 4}}>模型</span>
-        <MultiSelect
-          options={allModels}
-          selected={f.models}
-          onChange={v => setF({...f, models: v})}
-          placeholder="全部模型"/>
-      </div>
-
-      <div className="filter-spacer"/>
-
-      {filtersActive > 0 && (
-        <button className="btn" onClick={clearAll}>
-          <svg className="icon" viewBox="0 0 16 16" fill="none">
-            <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-          </svg>
-          清除筛选 · {filtersActive}
+        )}
+        <button className={`toggle ${f.compare ? 'on' : ''}`} onClick={() => setF({...f, compare: !f.compare})}>
+          <span className="toggle-slot"/>
+          对比上一周期
         </button>
-      )}
-      <button className={`toggle ${f.compare ? 'on' : ''}`} onClick={() => setF({...f, compare: !f.compare})}>
-        <span className="toggle-slot"/>
-        对比上一周期
-      </button>
-      <button className="btn" onClick={onExport}>
-        <svg className="icon" viewBox="0 0 16 16" fill="none">
-          <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-        导出
-      </button>
+        <button className="btn" onClick={onExport}>
+          <svg className="icon" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          导出
+        </button>
+      </div>
     </div>
   );
 }

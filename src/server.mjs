@@ -109,7 +109,6 @@ function handleApi(req, url, res) {
         collected_at AS collectedAt
       FROM collection_runs
       ORDER BY id DESC
-      LIMIT 200
     `);
 
     // Normalize sessions
