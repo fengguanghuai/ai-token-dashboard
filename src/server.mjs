@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
 import { openDb, recordRun, upsertDaily, upsertSession } from './db.mjs';
+import { loadCollectorConfig } from './collector-config.mjs';
 
 const port = Number(process.env.PORT || 4173);
 const staticDir = existsSync(resolve(process.cwd(), 'dist'))
@@ -32,6 +33,7 @@ const server = createServer((req, res) => {
 
 server.listen(port, () => {
   console.log(`AI Token Dashboard: http://localhost:${port}`);
+  startScheduledCollect();
 });
 
 function handleApi(req, url, res) {
@@ -187,12 +189,21 @@ function handleCollect(req, res) {
     return;
   }
 
+  startCollection({ reason: 'manual' });
+  sendJson(res, collectionState, 202);
+}
+
+function startCollection({ reason = 'manual' } = {}) {
   if (activeCollection) {
-    sendJson(res, collectionState, 202);
-    return;
+    return false;
   }
 
-  const child = spawn(process.execPath, ['src/collect.mjs'], {
+  const args = ['src/collect.mjs'];
+  const device = collectionDevice();
+  if (device) args.push('--device', device);
+  if (process.env.DB_PATH) args.push('--db', process.env.DB_PATH);
+
+  const child = spawn(process.execPath, args, {
     cwd: process.cwd(),
     env: process.env,
     windowsHide: true
@@ -204,7 +215,7 @@ function handleCollect(req, res) {
   const startedAt = new Date().toISOString();
   collectionState = {
     status: 'running',
-    message: '正在采集本机用量',
+    message: reason === 'scheduled' ? '正在定时采集本机用量' : '正在采集本机用量',
     startedAt,
     finishedAt: null,
     exitCode: null,
@@ -241,7 +252,53 @@ function handleCollect(req, res) {
     };
   });
 
-  sendJson(res, collectionState, 202);
+  return true;
+}
+
+function startScheduledCollect() {
+  const schedule = scheduledCollectConfig();
+  if (!schedule.enabled) return;
+
+  console.log(`[collect:schedule] enabled interval=${schedule.intervalSeconds}s runOnStart=${schedule.runOnStart}`);
+
+  const run = () => {
+    const started = startCollection({ reason: 'scheduled' });
+    if (!started) console.log('[collect:schedule] skipped because a collection is already running');
+  };
+
+  if (schedule.runOnStart) {
+    setTimeout(run, 1000);
+  }
+
+  setInterval(run, schedule.intervalSeconds * 1000);
+}
+
+function scheduledCollectConfig() {
+  const config = loadCollectorConfig().scheduledCollect || {};
+  const enabled = envBool('SCHEDULED_COLLECT_ENABLED', config.enabled ?? false);
+  const intervalSeconds = Math.max(
+    10,
+    envNumber('SCHEDULED_COLLECT_INTERVAL_SECONDS',
+      envNumber('COLLECT_INTERVAL_SECONDS', config.intervalSeconds ?? 300))
+  );
+  const runOnStart = envBool('SCHEDULED_COLLECT_RUN_ON_START', config.runOnStart ?? false);
+  return { enabled, intervalSeconds, runOnStart };
+}
+
+function collectionDevice() {
+  const config = loadCollectorConfig().scheduledCollect || {};
+  return process.env.COLLECT_DEVICE || process.env.SCHEDULED_COLLECT_DEVICE || config.device || null;
+}
+
+function envBool(name, fallback) {
+  const value = process.env[name];
+  if (value == null || value === '') return Boolean(fallback);
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function envNumber(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : Number(fallback);
 }
 
 async function handleIngest(req, res) {

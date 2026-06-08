@@ -6,5 +6,11 @@ services:
     environment:
       PORT: "4173"
       INGEST_TOKEN: "${INGEST_TOKEN:?Set INGEST_TOKEN before starting the hub}"
+      HOME: /collector-home
+      SCHEDULED_COLLECT_ENABLED: "${SCHEDULED_COLLECT_ENABLED:-false}"
+      SCHEDULED_COLLECT_INTERVAL_SECONDS: "${SCHEDULED_COLLECT_INTERVAL_SECONDS:-${COLLECT_INTERVAL_SECONDS:-300}}"
+      SCHEDULED_COLLECT_RUN_ON_START: "${SCHEDULED_COLLECT_RUN_ON_START:-false}"
+      COLLECT_DEVICE: "${COLLECT_DEVICE:-docker-collector}"
     volumes:
       - ./data:/app/data
+      - "${AI_TOKEN_DASHBOARD_COLLECTOR_HOME:-.}:/collector-home:ro"

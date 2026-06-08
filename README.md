@@ -132,6 +132,43 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 数据写入挂载的 `./data` 目录。**本机日志采集建议在宿主机执行**，因为各 Agent/CLI 的会话文件保存在宿主机用户目录中。
 
+### 定时采集
+
+服务内置定时采集能力，默认关闭。开启后，服务会按配置间隔自动执行一次本机采集；Docker 和普通 `npm run serve` 启动走的是同一套逻辑。
+
+如果用 Docker 采集，需要把宿主机的 AI 工具日志目录挂载进容器。`docker-compose.yml` 已内置相关环境变量和挂载，默认每 5 分钟运行一次采集，并写入同一个 `./data/usage.sqlite`。
+
+Linux/macOS 示例：
+
+```bash
+export INGEST_TOKEN="your-secret-token"
+export AI_TOKEN_DASHBOARD_COLLECTOR_HOME="$HOME"
+export SCHEDULED_COLLECT_ENABLED=true
+export SCHEDULED_COLLECT_RUN_ON_START=true
+export COLLECT_DEVICE="my-laptop"
+export SCHEDULED_COLLECT_INTERVAL_SECONDS=300
+docker compose up -d
+```
+
+PowerShell 示例：
+
+```powershell
+$env:INGEST_TOKEN = "your-secret-token"
+$env:AI_TOKEN_DASHBOARD_COLLECTOR_HOME = $env:USERPROFILE
+$env:SCHEDULED_COLLECT_ENABLED = "true"
+$env:SCHEDULED_COLLECT_RUN_ON_START = "true"
+$env:COLLECT_DEVICE = "my-laptop"
+$env:SCHEDULED_COLLECT_INTERVAL_SECONDS = "300"
+docker compose up -d
+```
+
+注意：
+
+- 不开启 `SCHEDULED_COLLECT_ENABLED` 时，只会启动看板和 ingest 服务，不会自动采集。
+- `AI_TOKEN_DASHBOARD_COLLECTOR_HOME` 必须指向保存 `.codex`、`.claude`、`.hermes`、`.local/share/opencode` 等日志的宿主机用户目录。
+- 非 Docker 场景也可以在 `config/collectors.json` 的 `scheduledCollect` 中配置 `enabled`、`intervalSeconds`、`runOnStart` 和 `device`。
+- 如果 AI 工具数据分散在多个目录，可以通过 `AI_TOKEN_DASHBOARD_CONFIG` 提供自定义 collector 配置。
+
 ---
 
 ## 配置项
@@ -142,6 +179,10 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 | `API_PORT` | `4173` | `npm run dev` 中 API 服务端口 |
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
 | `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
+| `SCHEDULED_COLLECT_ENABLED` | `false` | 是否启用服务内置定时采集 |
+| `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | 定时采集间隔秒数，最低 10 秒 |
+| `SCHEDULED_COLLECT_RUN_ON_START` | `false` | 服务启动后是否立即采集一次 |
+| `COLLECT_DEVICE` | 主机名 | 定时采集写入记录的设备标签 |
 
 ### 定价缓存
 

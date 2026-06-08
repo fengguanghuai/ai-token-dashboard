@@ -7,6 +7,7 @@ export const defaultDbPath = resolve(process.cwd(), 'data', 'usage.sqlite');
 export function openDb(dbPath = defaultDbPath) {
   mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA busy_timeout = 10000');
   db.exec('PRAGMA journal_mode = WAL');
   db.exec('PRAGMA foreign_keys = ON');
   initSchema(db);

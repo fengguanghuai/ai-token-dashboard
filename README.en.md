@@ -132,6 +132,43 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 Data is written to the mounted `./data` volume. **Local log collection should run on the host**, as agent session files live in the host user's home directory.
 
+### Scheduled Collection
+
+The server has built-in scheduled collection. It is disabled by default. Once enabled, the server runs local collection at the configured interval; Docker and plain `npm run serve` use the same scheduler.
+
+When collecting from Docker, mount the host user's AI tool log directory into the container. `docker-compose.yml` includes the required environment variables and mount. The default interval is 5 minutes and data is written to the same `./data/usage.sqlite` database.
+
+Linux/macOS:
+
+```bash
+export INGEST_TOKEN="your-secret-token"
+export AI_TOKEN_DASHBOARD_COLLECTOR_HOME="$HOME"
+export SCHEDULED_COLLECT_ENABLED=true
+export SCHEDULED_COLLECT_RUN_ON_START=true
+export COLLECT_DEVICE="my-laptop"
+export SCHEDULED_COLLECT_INTERVAL_SECONDS=300
+docker compose up -d
+```
+
+PowerShell:
+
+```powershell
+$env:INGEST_TOKEN = "your-secret-token"
+$env:AI_TOKEN_DASHBOARD_COLLECTOR_HOME = $env:USERPROFILE
+$env:SCHEDULED_COLLECT_ENABLED = "true"
+$env:SCHEDULED_COLLECT_RUN_ON_START = "true"
+$env:COLLECT_DEVICE = "my-laptop"
+$env:SCHEDULED_COLLECT_INTERVAL_SECONDS = "300"
+docker compose up -d
+```
+
+Notes:
+
+- Without `SCHEDULED_COLLECT_ENABLED`, the server only starts the dashboard/ingest service and does not collect automatically.
+- `AI_TOKEN_DASHBOARD_COLLECTOR_HOME` must point to the host user directory that contains logs such as `.codex`, `.claude`, `.hermes`, and `.local/share/opencode`.
+- Outside Docker, you can also configure `enabled`, `intervalSeconds`, `runOnStart`, and `device` under `scheduledCollect` in `config/collectors.json`.
+- If AI tool data lives across multiple directories, provide a custom collector config with `AI_TOKEN_DASHBOARD_CONFIG`.
+
 ---
 
 ## Configuration
@@ -142,6 +179,10 @@ Data is written to the mounted `./data` volume. **Local log collection should ru
 | `API_PORT` | `4173` | API server port used by `npm run dev` |
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |
 | `INGEST_TOKEN` | _(unset)_ | If set, `/api/ingest` requires `Authorization: Bearer <token>` |
+| `SCHEDULED_COLLECT_ENABLED` | `false` | Enable the built-in scheduled collector |
+| `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | Scheduled collection interval in seconds, minimum 10 seconds |
+| `SCHEDULED_COLLECT_RUN_ON_START` | `false` | Run one collection shortly after server startup |
+| `COLLECT_DEVICE` | hostname | Device label stored with scheduled collection records |
 
 ### Pricing Caches
 
