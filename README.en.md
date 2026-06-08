@@ -132,6 +132,36 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 Data is written to the mounted `./data` volume. **Local log collection should run on the host**, as agent session files live in the host user's home directory.
 
+### Scheduled Collection in Docker
+
+If you want Docker to run collection on a schedule, mount the host user's AI tool log directory into the collector container. `docker-compose.yml` includes an optional `collector` profile. It runs collection every 5 minutes by default and writes to the same `./data/usage.sqlite` database.
+
+Linux/macOS:
+
+```bash
+export INGEST_TOKEN="your-secret-token"
+export AI_TOKEN_DASHBOARD_COLLECTOR_HOME="$HOME"
+export COLLECT_DEVICE="my-laptop"
+export COLLECT_INTERVAL_SECONDS=300
+docker compose --profile collector up -d
+```
+
+PowerShell:
+
+```powershell
+$env:INGEST_TOKEN = "your-secret-token"
+$env:AI_TOKEN_DASHBOARD_COLLECTOR_HOME = $env:USERPROFILE
+$env:COLLECT_DEVICE = "my-laptop"
+$env:COLLECT_INTERVAL_SECONDS = "300"
+docker compose --profile collector up -d
+```
+
+Notes:
+
+- Without `--profile collector`, Docker only starts the dashboard/ingest server and does not collect automatically.
+- `AI_TOKEN_DASHBOARD_COLLECTOR_HOME` must point to the host user directory that contains logs such as `.codex`, `.claude`, `.hermes`, and `.local/share/opencode`.
+- If AI tool data lives across multiple directories, prefer running `npm run collect` from a host scheduler, or provide a custom collector config with `AI_TOKEN_DASHBOARD_CONFIG`.
+
 ---
 
 ## Configuration

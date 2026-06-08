@@ -5,6 +5,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY src ./src
+COPY config ./config
+COPY data/pricing-litellm.json data/pricing-openrouter.json ./data/
 COPY index.html vite.config.js ./
 RUN npm run build && npm prune --omit=dev
 

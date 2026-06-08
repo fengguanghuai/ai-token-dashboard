@@ -132,6 +132,36 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 数据写入挂载的 `./data` 目录。**本机日志采集建议在宿主机执行**，因为各 Agent/CLI 的会话文件保存在宿主机用户目录中。
 
+### Docker 定时采集
+
+如果确实希望由 Docker 容器定时采集，需要把宿主机的 AI 工具日志目录挂载给 collector。`docker-compose.yml` 内置了可选的 `collector` profile，默认每 5 分钟运行一次采集，并写入同一个 `./data/usage.sqlite`。
+
+Linux/macOS 示例：
+
+```bash
+export INGEST_TOKEN="your-secret-token"
+export AI_TOKEN_DASHBOARD_COLLECTOR_HOME="$HOME"
+export COLLECT_DEVICE="my-laptop"
+export COLLECT_INTERVAL_SECONDS=300
+docker compose --profile collector up -d
+```
+
+PowerShell 示例：
+
+```powershell
+$env:INGEST_TOKEN = "your-secret-token"
+$env:AI_TOKEN_DASHBOARD_COLLECTOR_HOME = $env:USERPROFILE
+$env:COLLECT_DEVICE = "my-laptop"
+$env:COLLECT_INTERVAL_SECONDS = "300"
+docker compose --profile collector up -d
+```
+
+注意：
+
+- 不启用 `--profile collector` 时，只会启动看板和 ingest 服务，不会自动采集。
+- `AI_TOKEN_DASHBOARD_COLLECTOR_HOME` 必须指向保存 `.codex`、`.claude`、`.hermes`、`.local/share/opencode` 等日志的宿主机用户目录。
+- 如果 AI 工具数据分散在多个目录，建议继续在宿主机用系统任务运行 `npm run collect`，或通过 `AI_TOKEN_DASHBOARD_CONFIG` 提供自定义 collector 配置。
+
 ---
 
 ## 配置项
