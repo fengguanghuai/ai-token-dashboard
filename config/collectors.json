@@ -1,4 +1,10 @@
 {
+  "scheduledCollect": {
+    "enabled": false,
+    "intervalSeconds": 300,
+    "runOnStart": false,
+    "device": null
+  },
   "collectors": {
     "claude": {
       "roots": [

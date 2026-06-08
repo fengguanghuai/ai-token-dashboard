@@ -6,32 +6,11 @@ services:
     environment:
       PORT: "4173"
       INGEST_TOKEN: "${INGEST_TOKEN:?Set INGEST_TOKEN before starting the hub}"
-    volumes:
-      - ./data:/app/data
-
-  collector:
-    build: .
-    profiles:
-      - collector
-    depends_on:
-      - ai-token-dashboard
-    environment:
       HOME: /collector-home
-      DB_PATH: /app/data/usage.sqlite
+      SCHEDULED_COLLECT_ENABLED: "${SCHEDULED_COLLECT_ENABLED:-false}"
+      SCHEDULED_COLLECT_INTERVAL_SECONDS: "${SCHEDULED_COLLECT_INTERVAL_SECONDS:-${COLLECT_INTERVAL_SECONDS:-300}}"
+      SCHEDULED_COLLECT_RUN_ON_START: "${SCHEDULED_COLLECT_RUN_ON_START:-false}"
       COLLECT_DEVICE: "${COLLECT_DEVICE:-docker-collector}"
-      COLLECT_INTERVAL_SECONDS: "${COLLECT_INTERVAL_SECONDS:-300}"
     volumes:
       - ./data:/app/data
       - "${AI_TOKEN_DASHBOARD_COLLECTOR_HOME:-.}:/collector-home:ro"
-    command:
-      - sh
-      - -c
-      - |
-        sleep 5
-        while true; do
-          echo "[collector] run"
-          date -Iseconds
-          node src/collect.mjs --device "${COLLECT_DEVICE:-docker-collector}" --db /app/data/usage.sqlite
-          sleep "${COLLECT_INTERVAL_SECONDS:-300}"
-        done
-    restart: unless-stopped
