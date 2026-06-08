@@ -13,6 +13,8 @@ services:
     build: .
     profiles:
       - collector
+    depends_on:
+      - ai-token-dashboard
     environment:
       HOME: /collector-home
       DB_PATH: /app/data/usage.sqlite
@@ -25,6 +27,7 @@ services:
       - sh
       - -c
       - |
+        sleep 5
         while true; do
           echo "[collector] run"
           date -Iseconds
