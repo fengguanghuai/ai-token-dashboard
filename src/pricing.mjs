@@ -153,12 +153,22 @@ export async function loadPricing(cachePath) {
  * @param {string} model
  * @param {{ input?: number, output?: number, cacheRead?: number, cacheWrite?: number, reasoning?: number }} tokens
  * @param {object|null} pricingData  Dataset bundle from loadPricing()
+ * @param {{ tiered?: boolean }} [options]  Set tiered=false when tokens are already aggregated
  * @returns {number}  Cost in USD (0 if model unknown)
  */
-export function calculateCost(model, tokens, pricingData, provider = null) {
+export function calculateCost(model, tokens, pricingData, provider = null, options = {}) {
   const { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, reasoning = 0 } = tokens;
   const p = lookupPricingCached(model, pricingData, provider);
   if (!p) return 0;
+
+  if (options.tiered === false) {
+    return (
+      input * validPrice(p.input) +
+      (output + reasoning) * validPrice(p.output) +
+      cacheRead * validPrice(p.cacheRead) +
+      cacheWrite * validPrice(p.cacheWrite)
+    );
+  }
 
   return (
     tieredCost(input, p.input, [

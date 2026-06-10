@@ -39,6 +39,7 @@ function initSchema(db) {
       reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0,
+      pricing_locked_at TEXT,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (device, source, usage_date, model)
     );
@@ -65,6 +66,14 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_daily_usage_source ON daily_usage(source);
     CREATE INDEX IF NOT EXISTS idx_session_usage_total ON session_usage(total_tokens DESC);
   `);
+
+  ensureColumn(db, 'daily_usage', 'pricing_locked_at', 'TEXT');
+  db.exec(`
+    UPDATE daily_usage
+    SET pricing_locked_at = datetime('now')
+    WHERE pricing_locked_at IS NULL
+      AND usage_date < date('now', 'localtime')
+  `);
 }
 
 export function upsertDaily(db, row) {
@@ -72,8 +81,12 @@ export function upsertDaily(db, row) {
     INSERT INTO daily_usage (
       device, source, usage_date, model, input_tokens, output_tokens,
       cache_creation_tokens, cache_read_tokens, cached_input_tokens,
-      reasoning_output_tokens, total_tokens, cost_usd, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      reasoning_output_tokens, total_tokens, cost_usd, pricing_locked_at, updated_at
+    ) VALUES (
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      CASE WHEN ? < date('now', 'localtime') THEN datetime('now') ELSE NULL END,
+      datetime('now')
+    )
     ON CONFLICT(device, source, usage_date, model) DO UPDATE SET
       input_tokens = excluded.input_tokens,
       output_tokens = excluded.output_tokens,
@@ -82,7 +95,14 @@ export function upsertDaily(db, row) {
       cached_input_tokens = excluded.cached_input_tokens,
       reasoning_output_tokens = excluded.reasoning_output_tokens,
       total_tokens = excluded.total_tokens,
-      cost_usd = excluded.cost_usd,
+      cost_usd = CASE
+        WHEN daily_usage.usage_date < date('now', 'localtime') THEN daily_usage.cost_usd
+        ELSE excluded.cost_usd
+      END,
+      pricing_locked_at = CASE
+        WHEN daily_usage.usage_date < date('now', 'localtime') THEN COALESCE(daily_usage.pricing_locked_at, datetime('now'))
+        ELSE NULL
+      END,
       updated_at = datetime('now')
   `).run(
     row.device,
@@ -96,8 +116,15 @@ export function upsertDaily(db, row) {
     row.cachedInputTokens || 0,
     row.reasoningOutputTokens || 0,
     row.totalTokens || 0,
-    row.costUSD || 0
+    row.costUSD || 0,
+    row.usageDate
   );
+}
+
+function ensureColumn(db, tableName, columnName, columnDefinition) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (columns.some(column => column.name === columnName)) return;
+  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
 }
 
 export function upsertSession(db, row) {

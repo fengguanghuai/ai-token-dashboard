@@ -503,7 +503,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
           client:  CLIENT_KEY,
           modelId: row.model,
           tokens,
-          cost: calculateCost(row.model, tokens, pricingData),
+          cost: calculateCost(row.model, tokens, pricingData, null, { tiered: false }),
         };
       })
     }));
@@ -522,7 +522,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
       workspaceLabel: wm.workspaceLabel,
       model:          wm.model,
       ...tokens,
-      cost: calculateCost(wm.model, tokens, pricingData),
+      cost: calculateCost(wm.model, tokens, pricingData, null, { tiered: false }),
     };
   });
 
