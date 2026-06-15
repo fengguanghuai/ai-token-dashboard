@@ -161,6 +161,41 @@ body::before {
   color: var(--paper);
 }
 
+.custom-dates {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-date-sep {
+  font-size: 12px;
+  color: var(--ink-soft);
+  user-select: none;
+}
+
+.custom-date-input {
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: var(--sans);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.custom-date-input:focus {
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--indigo), transparent 85%);
+}
+
+.custom-date-input::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+
 .nav-actions {
   display: inline-flex; gap: 6px;
 }

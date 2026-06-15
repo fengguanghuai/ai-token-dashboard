@@ -410,6 +410,44 @@ button, input, select { font-family: inherit; color: inherit; }
 
 .filter-spacer { flex: 1; }
 
+/* ─── Custom date inputs ──────────────────────────────────── */
+
+.date-inputs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.date-sep {
+  font-size: 11.5px;
+  color: var(--subtle);
+  user-select: none;
+}
+
+.date-input {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: var(--font);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.date-input:focus {
+  border-color: var(--c-indigo);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--c-indigo), transparent 80%);
+}
+
+.date-input::-webkit-calendar-picker-indicator {
+  opacity: 0.5;
+  cursor: pointer;
+}
+
 /* ─── KPI grid ────────────────────────────────────────────── */
 
 .kpi-row {

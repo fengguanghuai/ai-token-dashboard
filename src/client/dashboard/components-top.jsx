@@ -66,14 +66,20 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport }) {
   const RANGES = [
-    { id: '7d',  label: '7 天',  days: 7  },
-    { id: '14d', label: '14 天', days: 14 },
-    { id: '30d', label: '30 天', days: 30 },
-    { id: '90d', label: '90 天', days: 90 },
-    { id: 'all', label: '全部' }
+    { id: 'today', label: '今天', days: 1  },
+    { id: '7d',    label: '7 天', days: 7  },
+    { id: '14d',   label: '14 天', days: 14 },
+    { id: '30d',   label: '30 天', days: 30 },
+    { id: '90d',   label: '90 天', days: 90 },
+    { id: 'all',   label: '全部' },
+    { id: 'custom', label: '自定义' }
   ];
 
   const setRange = (r) => {
+    if (r.id === 'custom') {
+      setF({ ...f, rangeId: 'custom' });
+      return;
+    }
     if (r.id === 'all') {
       setF({ ...f, rangeId: r.id, startDate: availableRange.startDate, endDate: availableRange.endDate });
       return;
@@ -105,6 +111,21 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
                 onClick={() => setRange(r)}>{r.label}</button>
             ))}
           </div>
+          {f.rangeId === 'custom' && (
+            <div className="date-inputs">
+              <input type="date" className="date-input"
+                value={f.startDate}
+                min={availableRange.startDate}
+                max={f.endDate || availableRange.endDate}
+                onChange={e => setF({ ...f, startDate: e.target.value })} />
+              <span className="date-sep">至</span>
+              <input type="date" className="date-input"
+                value={f.endDate}
+                min={f.startDate || availableRange.startDate}
+                max={availableRange.endDate}
+                onChange={e => setF({ ...f, endDate: e.target.value })} />
+            </div>
+          )}
         </div>
 
         <div className="divider"/>

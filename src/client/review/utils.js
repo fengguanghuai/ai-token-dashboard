@@ -17,15 +17,31 @@ function parseDateStr(s) {
 }
 
 const PERIOD_LABELS = {
+  today: '今天',
   week: '本周',
   month: '本月',
   prev:  '上月',
   '90d': '近 90 天',
-  all: '全部'
+  all: '全部',
+  custom: '自定义'
 };
 
-function getPeriod(id, today = new Date(), rows = []) {
+function getPeriod(id, today = new Date(), rows = [], customStart = null, customEnd = null) {
   const t = new Date(today); t.setHours(0,0,0,0);
+  if (id === 'today') {
+    const ds = localDateStr(t);
+    return {
+      id,
+      label: '今天',
+      start: ds,
+      end:   ds,
+      pretty: ds,
+      prev: (function () {
+        const ps = new Date(t); ps.setDate(ps.getDate() - 1);
+        return { start: localDateStr(ps), end: localDateStr(ps) };
+      })()
+    };
+  }
   if (id === 'week') {
     const start = new Date(t); start.setDate(t.getDate() - 6);
     return {
@@ -93,6 +109,19 @@ function getPeriod(id, today = new Date(), rows = []) {
       start,
       end,
       pretty: `${start} – ${end}`,
+      prev: null
+    };
+  }
+  if (id === 'custom') {
+    const dates = rows.map(r => r.usageDate).filter(Boolean).sort();
+    const fallbackStart = customStart || dates[0] || localDateStr(t);
+    const fallbackEnd = customEnd || dates[dates.length - 1] || localDateStr(t);
+    return {
+      id,
+      label: '自定义',
+      start: fallbackStart,
+      end: fallbackEnd,
+      pretty: `${fallbackStart} – ${fallbackEnd}`,
       prev: null
     };
   }

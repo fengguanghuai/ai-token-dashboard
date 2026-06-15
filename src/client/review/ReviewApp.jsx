@@ -63,7 +63,9 @@ function ReviewDashboard({ rawData }) {
   TODAY.setHours(0, 0, 0, 0);
 
   const [periodId, setPeriodId] = useState('month');
-  const period = useMemo(() => RU.getPeriod(periodId, TODAY, rawData.daily), [periodId, rawData.daily]);
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const period = useMemo(() => RU.getPeriod(periodId, TODAY, rawData.daily, customStart, customEnd), [periodId, rawData.daily, customStart, customEnd]);
   const prevPeriod = useMemo(() => period.prev
     ? { start: period.prev.start, end: period.prev.end }
     : null, [period]);
@@ -122,7 +124,7 @@ function ReviewDashboard({ rawData }) {
   , [daily, period, prevDaily]);
 
   // Period nav
-  const ORDER = ['week', 'month', 'prev', '90d', 'all'];
+  const ORDER = ['today', 'week', 'month', 'prev', '90d', 'all', 'custom'];
   const idx = ORDER.indexOf(periodId);
   const prevId = idx > 0 ? ORDER[idx - 1] : null;
   const nextId = idx < ORDER.length - 1 ? ORDER[idx + 1] : null;
@@ -166,6 +168,25 @@ function ReviewDashboard({ rawData }) {
               </button>
             ))}
           </div>
+          {periodId === 'custom' && (
+            <div className="custom-dates">
+              <input type="date" className="custom-date-input"
+                value={customStart}
+                max={customEnd || undefined}
+                onChange={e => {
+                  setCustomStart(e.target.value);
+                  if (periodId !== 'custom') setPeriodId('custom');
+                }} />
+              <span className="custom-date-sep">至</span>
+              <input type="date" className="custom-date-input"
+                value={customEnd}
+                min={customStart || undefined}
+                onChange={e => {
+                  setCustomEnd(e.target.value);
+                  if (periodId !== 'custom') setPeriodId('custom');
+                }} />
+            </div>
+          )}
           <div className="nav-actions">
             <button className="nav-btn" onClick={() => window.print()}>
               <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
