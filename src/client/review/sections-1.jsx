@@ -24,7 +24,7 @@ function HeroSection({ period, totals, prevTotals, stats }) {
       </div>
 
       <h1 className="hero-headline">
-        {period.id === 'custom' ? (
+        {(period.id === 'custom' || period.id === 'all') ? (
           <>在 <span className="num">{period.start}</span> 至 <span className="num">{period.end}</span> 期间，你用了 <span className="num">{U.compactCN(totals.total)}</span> tokens</>
         ) : (
           <>{period.label}，你用了 <span className="num">{U.compactCN(totals.total)}</span> tokens</>
