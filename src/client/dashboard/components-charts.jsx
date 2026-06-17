@@ -322,13 +322,25 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       },
       emphasis: {
         scale: true,
-        scaleSize: 3,
-        itemStyle: { shadowBlur: 10, shadowColor: 'oklch(0 0 0 / 0.06)' }
+        scaleSize: 3
+      },
+      blur: {
+        itemStyle: { opacity: 1 }
       },
       data: data.map(d => ({
         name: d.name,
         value: d.value,
-        itemStyle: { color: d.color, opacity: focused && focused !== d.name ? 0.25 : 1 }
+        itemStyle: { color: d.color, opacity: focused && focused !== d.name ? 0.25 : 1 },
+        emphasis: {
+          itemStyle: {
+            color: d.color,
+            opacity: 1,
+            borderColor: '#fff',
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'oklch(0 0 0 / 0.06)'
+          }
+        }
       }))
     }]
   };
