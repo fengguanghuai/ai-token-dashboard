@@ -180,7 +180,10 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
     animationDuration: 400,
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'shadow', shadowStyle: { color: 'oklch(0.95 0.004 80 / 0.6)' } },
+      axisPointer: {
+        type: 'line',
+        lineStyle: { color: 'oklch(0.62 0.04 265 / 0.45)', width: 1, type: [3, 3] }
+      },
       backgroundColor: '#ffffff',
       borderColor: 'oklch(0.92 0.004 80)',
       borderWidth: 1,
@@ -309,6 +312,10 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       type: 'pie',
       animationDurationUpdate: 220,
       animationEasingUpdate: 'cubicOut',
+      stateAnimation: {
+        duration: 140,
+        easing: 'cubicOut'
+      },
       radius: ['48%', '78%'],
       center: ['50%', '50%'],
       minAngle: 2,
@@ -318,11 +325,19 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       itemStyle: {
         borderRadius: 8,
         borderColor: '#fff',
-        borderWidth: 2
+        borderWidth: 2,
+        shadowBlur: 6,
+        shadowOffsetY: 1,
+        shadowColor: 'oklch(0 0 0 / 0.045)'
       },
       emphasis: {
         scale: true,
-        scaleSize: 3
+        scaleSize: 3,
+        itemStyle: {
+          shadowBlur: 6,
+          shadowOffsetY: 1,
+          shadowColor: 'oklch(0 0 0 / 0.045)'
+        }
       },
       blur: {
         itemStyle: { opacity: 1 }
@@ -337,8 +352,9 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
             opacity: 1,
             borderColor: '#fff',
             borderWidth: 2,
-            shadowBlur: 10,
-            shadowColor: 'oklch(0 0 0 / 0.06)'
+            shadowBlur: 6,
+            shadowOffsetY: 1,
+            shadowColor: 'oklch(0 0 0 / 0.045)'
           }
         }
       }))
