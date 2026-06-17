@@ -98,6 +98,19 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
   // Build the series based on mode
   const series = [];
   const palette = sources.map(s => U.getSourceColor(s));
+  const stableBarState = {
+    emphasis: { focus: 'none', itemStyle: { opacity: 1 } },
+    blur: { itemStyle: { opacity: 1 } },
+    select: { itemStyle: { opacity: 1 } }
+  };
+  const stableLineState = (width = 2, areaOpacity = null) => {
+    const area = areaOpacity == null ? {} : { areaStyle: { opacity: areaOpacity } };
+    return {
+      emphasis: { focus: 'none', lineStyle: { width, opacity: 1 }, itemStyle: { opacity: 1 }, ...area },
+      blur: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 }, ...area },
+      select: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 }, ...area }
+    };
+  };
 
   if (mode === 'stacked' || mode === 'bar') {
     sources.forEach((src, i) => {
@@ -107,7 +120,7 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
         stack: mode === 'stacked' ? 'total' : undefined,
         barMaxWidth: 24,
         itemStyle: { color: palette[i] },
-        emphasis: { focus: 'series' },
+        ...stableBarState,
         data: dates.map(d => {
           const value = byKey.get(`${d}::${src}`) || 0;
           if (mode === 'bar') return { value, itemStyle: { borderRadius: [3, 3, 0, 0] } };
@@ -141,7 +154,7 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
             ]
           }
         },
-        emphasis: { focus: 'series', lineStyle: { width: 3 } },
+        ...stableLineState(2.6, 0.08),
         data: dates.map(d => byKey.get(`${d}::${src}`) || 0)
       });
     });
@@ -156,6 +169,7 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
       symbol: 'none',
       lineStyle: { width: 1.6, color: 'oklch(0.55 0.005 80)', type: 'dashed' },
       itemStyle: { color: 'oklch(0.55 0.005 80)' },
+      ...stableLineState(1.6),
       data: dates.map((_, i) => compareSeries[i] || 0),
       z: 5
     });
@@ -169,6 +183,8 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
       smooth: 0.5,
       symbol: 'none',
       lineStyle: { width: 1.6, color: 'oklch(0.45 0.04 265)', type: [4, 4] },
+      itemStyle: { color: 'oklch(0.45 0.04 265)' },
+      ...stableLineState(1.6),
       data: rolling,
       z: 4
     });
@@ -326,17 +342,17 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
         borderRadius: 8,
         borderColor: '#fff',
         borderWidth: 2,
-        shadowBlur: 6,
-        shadowOffsetY: 1,
-        shadowColor: 'oklch(0 0 0 / 0.045)'
+        shadowBlur: 12,
+        shadowOffsetY: 3,
+        shadowColor: 'rgba(15, 23, 42, 0.16)'
       },
       emphasis: {
         scale: true,
         scaleSize: 3,
         itemStyle: {
-          shadowBlur: 6,
-          shadowOffsetY: 1,
-          shadowColor: 'oklch(0 0 0 / 0.045)'
+          shadowBlur: 12,
+          shadowOffsetY: 3,
+          shadowColor: 'rgba(15, 23, 42, 0.16)'
         }
       },
       blur: {
@@ -352,9 +368,9 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
             opacity: 1,
             borderColor: '#fff',
             borderWidth: 2,
-            shadowBlur: 6,
-            shadowOffsetY: 1,
-            shadowColor: 'oklch(0 0 0 / 0.045)'
+            shadowBlur: 12,
+            shadowOffsetY: 3,
+            shadowColor: 'rgba(15, 23, 42, 0.16)'
           }
         }
       }))
