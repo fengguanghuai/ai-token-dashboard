@@ -17,6 +17,8 @@ import { canonicalProvider, inferProviderFromModel, localDateFromTimestamp, norm
 
 export const CLIENT_KEY = 'opencode';
 export const SOURCE_LABEL = 'OpenCode';
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 function opencodeDataDir() {
   return configuredPath(
@@ -153,6 +155,7 @@ function parseMessageObject(msg, fallbackId, fallbackSessionId, fallbackWorkspac
     sessionId: msg.sessionID || fallbackSessionId || 'unknown',
     dedupKey: msg.id || fallbackId || null,
     fingerprint: fingerprintFor(msg, tokens, model, provider),
+    eventTime: timestamp,
     date: localDateFromTimestamp(timestamp, 'unknown'),
     model,
     provider,
@@ -259,6 +262,7 @@ async function parseLegacyJsonFile(filePath) {
 export async function collect(pricingData = null) {
   const dailyMap = new Map();
   const wmMap = new Map();
+  const events = [];
   const seen = new Set();
 
   const addMessage = (message) => {
@@ -269,6 +273,20 @@ export async function collect(pricingData = null) {
 
     const calculatedCost = calculateCost(message.model, message.tokens, pricingData, message.provider);
     const cost = message.cost > 0 ? message.cost : calculatedCost;
+    if (keepTimeEvent(message.eventTime)) {
+      events.push({
+        client: CLIENT_KEY,
+        eventKey: message.dedupKey || message.fingerprint,
+        eventTime: message.eventTime,
+        usageDate: message.date,
+        sessionId: message.sessionId,
+        workspaceKey: message.workspace || message.sessionId || 'unknown',
+        workspaceLabel: message.workspaceLabel || message.workspace || message.sessionId || 'unknown',
+        model: message.model,
+        tokens: message.tokens,
+        cost
+      });
+    }
 
     const dk = `${message.date}::${message.model}`;
     if (!dailyMap.has(dk)) {
@@ -303,7 +321,13 @@ export async function collect(pricingData = null) {
     addMessage(await parseLegacyJsonFile(jsonPath));
   }
 
-  return buildOutput(dailyMap, wmMap);
+  return { ...buildOutput(dailyMap, wmMap), eventsJson: { events } };
+}
+
+function keepTimeEvent(timestamp) {
+  const n = Number(timestamp || 0);
+  const ms = n < 10_000_000_000 ? n * 1000 : n;
+  return Number.isFinite(ms) && ms >= EVENT_CUTOFF_MS;
 }
 
 function buildOutput(dailyMap, wmMap) {

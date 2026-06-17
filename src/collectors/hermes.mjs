@@ -17,6 +17,8 @@ import { canonicalProvider, inferProviderFromModel, localDateFromTimestamp, norm
 
 export const CLIENT_KEY = 'hermes';
 export const SOURCE_LABEL = 'Hermes Agent';
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -120,6 +122,7 @@ export async function collect(pricingData = null) {
 
   const dailyMap = new Map();   // "date::model" -> aggregated
   const wmMap    = new Map();   // sessionId -> session-level record
+  const events   = [];
 
   for (const row of rows) {
     const date     = tsToDate(row.started_at);
@@ -136,6 +139,20 @@ export async function collect(pricingData = null) {
     const calculatedCost = calculateCost(model, tokens, pricingData, provider);
     const cost = originalCost > 0 ? originalCost : calculatedCost;
     const sessId   = String(row.id || 'unknown');
+    if (keepTimeEvent(row.started_at)) {
+      events.push({
+        client: CLIENT_KEY,
+        eventKey: sessId,
+        eventTime: row.started_at,
+        usageDate: date,
+        sessionId: sessId,
+        workspaceKey: sessId,
+        workspaceLabel: sessId,
+        model,
+        tokens,
+        cost
+      });
+    }
 
     // Daily aggregation
     const dk = `${date}::${model}`;
@@ -155,7 +172,13 @@ export async function collect(pricingData = null) {
     });
   }
 
-  return buildOutput(dailyMap, wmMap);
+  return { ...buildOutput(dailyMap, wmMap), eventsJson: { events } };
+}
+
+function keepTimeEvent(timestamp) {
+  const n = Number(timestamp || 0);
+  const ms = n < 10_000_000_000 ? n * 1000 : n;
+  return Number.isFinite(ms) && ms >= EVENT_CUTOFF_MS;
 }
 
 // ---------------------------------------------------------------------------

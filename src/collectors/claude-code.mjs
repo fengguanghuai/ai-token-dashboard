@@ -16,6 +16,8 @@ import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
 export const CLIENT_KEY = 'claude';
 export const SOURCE_LABEL = 'Claude Code';
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -251,6 +253,7 @@ export async function collect(pricingData = null) {
   const dailyMap = new Map();
   // workspaceModelKey ("workspaceDir::model") -> aggregated token counts
   const wmMap = new Map();
+  const events = [];
 
   for (const root of await getScanRoots()) {
     const filePaths = await collectJsonlFiles(root.path);
@@ -261,7 +264,7 @@ export async function collect(pricingData = null) {
 
       for (const record of records) {
         const tokens = extractTokens(record.usage);
-        aggregateRecord({ ...record, tokens, workspaceKey, workspaceLabel }, dailyMap, wmMap, pricingData);
+        aggregateRecord({ ...record, tokens, workspaceKey, workspaceLabel, filePath }, dailyMap, wmMap, pricingData, events);
       }
     }
   }
@@ -313,7 +316,7 @@ export async function collect(pricingData = null) {
 
   const modelsJson = { entries };
 
-  return { graphJson, modelsJson };
+  return { graphJson, modelsJson, eventsJson: { events } };
 }
 
 function workspaceKeyFromPath(root, filePath) {
@@ -323,12 +326,27 @@ function workspaceKeyFromPath(root, filePath) {
   return `transcripts:${firstSegment || filePath}`;
 }
 
-function aggregateRecord(record, dailyMap, wmMap, pricingData) {
+function aggregateRecord(record, dailyMap, wmMap, pricingData, events) {
   const date = localDateFromTimestamp(record.timestamp);
   const model = normalizeModelForGrouping(record.model);
   const tokens = record.tokens || extractTokens(record.usage);
   const calculatedCost = calculateCost(model, tokens, pricingData);
   const costUSD = calculatedCost > 0 ? calculatedCost : record.costUSD;
+
+  if (keepTimeEvent(record.timestamp)) {
+    events.push({
+      client: CLIENT_KEY,
+      eventKey: `${record.filePath || record.workspaceKey}:${record.timestamp || ''}:${model}:${JSON.stringify(tokens)}`,
+      eventTime: record.timestamp,
+      usageDate: date,
+      sessionId: record.filePath,
+      workspaceKey: record.workspaceKey,
+      workspaceLabel: record.workspaceLabel,
+      model,
+      tokens,
+      cost: costUSD
+    });
+  }
 
   // --- daily ---
   const dk = `${date}::${model}`;
@@ -353,4 +371,9 @@ function aggregateRecord(record, dailyMap, wmMap, pricingData) {
   const wmAgg = wmMap.get(wmk);
   addInto(wmAgg, tokens);
   wmAgg.cost += costUSD;
+}
+
+function keepTimeEvent(timestamp) {
+  const ms = Date.parse(timestamp || '');
+  return Number.isFinite(ms) && ms >= EVENT_CUTOFF_MS;
 }

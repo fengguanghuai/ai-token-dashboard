@@ -118,6 +118,37 @@ function daysAgo(n) {
   return localDateStr(d);
 }
 
+function toDateTimeLocalValue(date) {
+  return [
+    localDateStr(date),
+    [
+      String(date.getHours()).padStart(2, '0'),
+      String(date.getMinutes()).padStart(2, '0')
+    ].join(':')
+  ].join('T');
+}
+
+function startOfDayLocal(dateStr) {
+  const d = parseLocalDate(dateStr);
+  d.setHours(0, 0, 0, 0);
+  return toDateTimeLocalValue(d);
+}
+
+function endOfDayLocal(dateStr) {
+  const d = parseLocalDate(dateStr);
+  d.setHours(23, 59, 0, 0);
+  return toDateTimeLocalValue(d);
+}
+
+function timestampMs(value) {
+  if (!value) return null;
+  const text = String(value);
+  const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  const ms = new Date(hasZone ? normalized : normalized).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
 function addDays(dateStr, days) {
   const d = parseLocalDate(dateStr);
   d.setDate(d.getDate() + days);
@@ -141,6 +172,20 @@ function filterDaily(rows, f) {
     (f.devices.size === 0 || f.devices.has(r.device)) &&
     (f.models.size  === 0 || f.models.has(r.model))
   );
+}
+
+function filterTime(rows, f) {
+  const startMs = timestampMs(f.startDateTime || startOfDayLocal(f.startDate));
+  const endMs = timestampMs(f.endDateTime || endOfDayLocal(f.endDate));
+  return rows.filter(r => {
+    const ms = timestampMs(r.eventTime);
+    return ms != null &&
+      (startMs == null || ms >= startMs) &&
+      (endMs == null || ms <= endMs) &&
+      (f.sources.size === 0 || f.sources.has(r.source)) &&
+      (f.devices.size === 0 || f.devices.has(r.device)) &&
+      (f.models.size  === 0 || f.models.has(r.model));
+  });
 }
 
 // Aggregate totals across rows
@@ -217,7 +262,7 @@ export const U = {
   PALETTE, PALETTE_FALLBACK, getSourceColor,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,
-  localDateStr, daysAgo, addDays, rangeDates,
-  filterDaily, aggregateTotals, groupByDate, uniqueValues,
+  localDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,
+  filterDaily, filterTime, aggregateTotals, groupByDate, uniqueValues,
   downloadCSV, projectLabel, alpha
 };

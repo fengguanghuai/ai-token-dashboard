@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
-import { openDb, recordRun, upsertDaily, upsertSession } from './db.mjs';
+import { openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
 
 const port = Number(process.env.PORT || 4173);
@@ -112,6 +112,24 @@ function handleApi(req, url, res) {
       FROM collection_runs
       ORDER BY id DESC
     `);
+    const rawTime = all(`
+      SELECT rowid AS id, device, source,
+        event_time AS eventTime,
+        usage_date AS usageDate,
+        model,
+        project_path AS projectPath,
+        session_id AS sessionId,
+        input_tokens AS inputTokens,
+        output_tokens AS outputTokens,
+        cache_creation_tokens AS cacheCreationTokens,
+        cache_read_tokens AS cacheReadTokens,
+        cached_input_tokens AS cachedInputTokens,
+        reasoning_output_tokens AS reasoningOutputTokens,
+        total_tokens AS totalTokens,
+        cost_usd AS costUSD
+      FROM time_usage
+      ORDER BY event_time DESC
+    `);
 
     // Normalize sessions
     const sessions = rawSessions.map(s => ({
@@ -158,6 +176,7 @@ function handleApi(req, url, res) {
         ...d,
         projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null
       })),
+      time: rawTime,
       sessions,
       // Normalize runs: strip newlines from messages, shorten device names
       runs: rawRuns.map(r => ({
@@ -314,12 +333,14 @@ async function handleIngest(req, res) {
   try {
     const payload = await readJson(req);
     const dailyRows = Array.isArray(payload.daily) ? payload.daily : [];
+    const timeRows = Array.isArray(payload.time) ? payload.time : [];
     const sessionRows = Array.isArray(payload.sessions) ? payload.sessions : [];
     const runRows = Array.isArray(payload.runs) ? payload.runs : [];
 
     db.exec('BEGIN');
     try {
       dailyRows.forEach((row) => upsertDaily(db, row));
+      timeRows.forEach((row) => upsertTimeUsage(db, row));
       sessionRows.forEach((row) => upsertSession(db, row));
       runRows.forEach((row) => recordRun(db, row));
       db.exec('COMMIT');
@@ -328,7 +349,7 @@ async function handleIngest(req, res) {
       throw error;
     }
 
-    sendJson(res, { ok: true, daily: dailyRows.length, sessions: sessionRows.length, runs: runRows.length });
+    sendJson(res, { ok: true, daily: dailyRows.length, time: timeRows.length, sessions: sessionRows.length, runs: runRows.length });
   } catch (error) {
     sendJson(res, { error: error.message }, 400);
   }

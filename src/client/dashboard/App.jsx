@@ -32,7 +32,7 @@ export function App() {
       })
       .then(data => {
         // Assign colors to sources dynamically
-        const sourceNames = [...new Set(data.daily.map(r => r.source))];
+        const sourceNames = [...new Set([...(data.daily || []), ...(data.time || [])].map(r => r.source))];
         const SOURCES = sourceNames.map((name, i) => ({
           name,
           color: U.getSourceColor(name)
@@ -50,6 +50,8 @@ export function App() {
 
         setM({
           ...data,
+          daily: data.daily || [],
+          time: data.time || [],
           SOURCES,
           HOURLY,
           today: U.daysAgo(0)
@@ -176,6 +178,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
     rangeId: '30d',
     startDate: U.daysAgo(29),
     endDate: U.daysAgo(0),
+    precise: false,
+    startDateTime: U.startOfDayLocal(U.daysAgo(29)),
+    endDateTime: U.endOfDayLocal(U.daysAgo(0)),
     sources: new Set(),
     devices: new Set(),
     models: new Set(),
@@ -187,23 +192,29 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
   const [focusedSource, setFocusedSource] = useState(null);
 
   // Build option lists
-  const allSources = useMemo(() => Array.from(new Set(M.daily.map(r => r.source))), [M.daily]);
-  const allDevices = useMemo(() => Array.from(new Set(M.daily.map(r => r.device))), [M.daily]);
-  const allModels  = useMemo(() => Array.from(new Set(M.daily.map(r => r.model))).filter(Boolean), [M.daily]);
+  const filterBaseRows = filters.precise && M.time.length ? M.time : M.daily;
+  const allSources = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.source))), [filterBaseRows]);
+  const allDevices = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.device))), [filterBaseRows]);
+  const allModels  = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.model))).filter(Boolean), [filterBaseRows]);
   const availableRange = useMemo(() => {
     const dates = M.daily.map(r => r.usageDate).filter(Boolean).sort();
+    const times = M.time.map(r => r.eventTime).filter(Boolean).sort();
     return {
       startDate: dates[0] || U.daysAgo(0),
-      endDate: dates[dates.length - 1] || U.daysAgo(0)
+      endDate: dates[dates.length - 1] || U.daysAgo(0),
+      startDateTime: times[0] ? U.toDateTimeLocalValue(new Date(times[0])) : U.startOfDayLocal(dates[0] || U.daysAgo(0)),
+      endDateTime: times[times.length - 1] ? U.toDateTimeLocalValue(new Date(times[times.length - 1])) : U.endOfDayLocal(dates[dates.length - 1] || U.daysAgo(0))
     };
-  }, [M.daily]);
+  }, [M.daily, M.time]);
 
   // ───── Filtered data ─────
   const filtered = useMemo(() => {
     const effective = { ...filters };
     if (focusedSource) effective.sources = new Set([focusedSource]);
-    return U.filterDaily(M.daily, effective);
-  }, [filters, focusedSource, M.daily]);
+    return filters.precise && M.time.length
+      ? U.filterTime(M.time, effective)
+      : U.filterDaily(M.daily, effective);
+  }, [filters, focusedSource, M.daily, M.time]);
 
   const totals = useMemo(() => U.aggregateTotals(filtered), [filtered]);
 
@@ -216,13 +227,31 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
   // ───── Comparison period ─────
   const compareData = useMemo(() => {
     if (!filters.compare) return { rows: null, dates: null, totals: null };
+    if (filters.precise && M.time.length) {
+      const startMs = new Date(filters.startDateTime).getTime();
+      const endMs = new Date(filters.endDateTime).getTime();
+      if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
+        return { rows: null, dates: null, totals: null };
+      }
+      const span = endMs - startMs;
+      const prevEnd = new Date(startMs - 60_000);
+      const prevStart = new Date(prevEnd.getTime() - span);
+      const startDateTime = U.toDateTimeLocalValue(prevStart);
+      const endDateTime = U.toDateTimeLocalValue(prevEnd);
+      const rows = U.filterTime(M.time, { ...filters, startDateTime, endDateTime });
+      return {
+        rows,
+        dates: U.rangeDates(startDateTime.slice(0, 10), endDateTime.slice(0, 10)),
+        totals: U.aggregateTotals(rows)
+      };
+    }
     const days = dates.length;
     const endStr = U.addDays(filters.startDate, -1);
     const startStr = U.addDays(endStr, -(days - 1));
     const rows  = U.filterDaily(M.daily, { ...filters, startDate: startStr, endDate: endStr });
     const cDates = U.rangeDates(startStr, endStr);
     return { rows, dates: cDates, totals: U.aggregateTotals(rows) };
-  }, [filters, dates.length, M.daily]);
+  }, [filters, dates.length, M.daily, M.time]);
 
   // ───── Sparklines ─────
   const dailyTotalsByDay = useMemo(() => {
@@ -256,8 +285,11 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
 
   // ───── Export ─────
   const onExportAll = () => {
-    U.downloadCSV(`tokens-daily-${filters.startDate}-${filters.endDate}.csv`, filtered, [
-      { title: 'date',             field: 'usageDate' },
+    const rangeName = filters.precise
+      ? `${filters.startDateTime}-${filters.endDateTime}`.replace(/[:T]/g, '-')
+      : `${filters.startDate}-${filters.endDate}`;
+    U.downloadCSV(`tokens-${filters.precise ? 'time' : 'daily'}-${rangeName}.csv`, filtered, [
+      { title: filters.precise ? 'time' : 'date', field: filters.precise ? 'eventTime' : 'usageDate' },
       { title: 'source',           field: 'source' },
       { title: 'device',           field: 'device' },
       { title: 'model',            field: 'model' },

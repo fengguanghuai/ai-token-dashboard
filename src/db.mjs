@@ -62,9 +62,32 @@ function initSchema(db) {
       PRIMARY KEY (device, source, session_id)
     );
 
+    CREATE TABLE IF NOT EXISTS time_usage (
+      device TEXT NOT NULL,
+      source TEXT NOT NULL,
+      event_key TEXT NOT NULL,
+      event_time TEXT NOT NULL,
+      usage_date TEXT NOT NULL,
+      model TEXT NOT NULL DEFAULT '',
+      project_path TEXT,
+      session_id TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+      cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+      reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      cost_usd REAL NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (device, source, event_key)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_daily_usage_date ON daily_usage(usage_date);
     CREATE INDEX IF NOT EXISTS idx_daily_usage_source ON daily_usage(source);
     CREATE INDEX IF NOT EXISTS idx_session_usage_total ON session_usage(total_tokens DESC);
+    CREATE INDEX IF NOT EXISTS idx_time_usage_time ON time_usage(event_time);
+    CREATE INDEX IF NOT EXISTS idx_time_usage_date_source ON time_usage(usage_date, source);
   `);
 
   ensureColumn(db, 'daily_usage', 'pricing_locked_at', 'TEXT');
@@ -74,6 +97,55 @@ function initSchema(db) {
     WHERE pricing_locked_at IS NULL
       AND usage_date < date('now', 'localtime')
   `);
+}
+
+export function upsertTimeUsage(db, row) {
+  db.prepare(`
+    INSERT INTO time_usage (
+      device, source, event_key, event_time, usage_date, model, project_path, session_id,
+      input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+      cached_input_tokens, reasoning_output_tokens, total_tokens, cost_usd, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(device, source, event_key) DO UPDATE SET
+      event_time = excluded.event_time,
+      usage_date = excluded.usage_date,
+      model = excluded.model,
+      project_path = excluded.project_path,
+      session_id = excluded.session_id,
+      input_tokens = excluded.input_tokens,
+      output_tokens = excluded.output_tokens,
+      cache_creation_tokens = excluded.cache_creation_tokens,
+      cache_read_tokens = excluded.cache_read_tokens,
+      cached_input_tokens = excluded.cached_input_tokens,
+      reasoning_output_tokens = excluded.reasoning_output_tokens,
+      total_tokens = excluded.total_tokens,
+      cost_usd = excluded.cost_usd,
+      updated_at = datetime('now')
+  `).run(
+    row.device,
+    row.source,
+    row.eventKey,
+    row.eventTime,
+    row.usageDate,
+    row.model || '',
+    row.projectPath || null,
+    row.sessionId || null,
+    row.inputTokens || 0,
+    row.outputTokens || 0,
+    row.cacheCreationTokens || 0,
+    row.cacheReadTokens || 0,
+    row.cachedInputTokens || 0,
+    row.reasoningOutputTokens || 0,
+    row.totalTokens || 0,
+    row.costUSD || 0
+  );
+}
+
+export function deleteTimeUsageForSource(db, device, source) {
+  db.prepare(`
+    DELETE FROM time_usage
+    WHERE device = ? AND source = ?
+  `).run(device, source);
 }
 
 export function upsertDaily(db, row) {

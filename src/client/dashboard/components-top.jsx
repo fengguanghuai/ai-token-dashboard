@@ -66,6 +66,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport }) {
   const RANGES = [
+    { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
     { id: '14d', label: '14 天', days: 14 },
     { id: '30d', label: '30 天', days: 30 },
@@ -75,10 +76,35 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
 
   const setRange = (r) => {
     if (r.id === 'all') {
-      setF({ ...f, rangeId: r.id, startDate: availableRange.startDate, endDate: availableRange.endDate });
+      setF({
+        ...f,
+        rangeId: r.id,
+        startDate: availableRange.startDate,
+        endDate: availableRange.endDate,
+        precise: false,
+        startDateTime: availableRange.startDateTime || U.startOfDayLocal(availableRange.startDate),
+        endDateTime: availableRange.endDateTime || U.endOfDayLocal(availableRange.endDate)
+      });
       return;
     }
-    setF({ ...f, rangeId: r.id, startDate: U.daysAgo(r.days - 1), endDate: U.daysAgo(0) });
+    const startDate = U.daysAgo(r.days - 1);
+    const endDate = U.daysAgo(0);
+    setF({
+      ...f,
+      rangeId: r.id,
+      startDate,
+      endDate,
+      precise: false,
+      startDateTime: U.startOfDayLocal(startDate),
+      endDateTime: U.endOfDayLocal(endDate)
+    });
+  };
+
+  const setPreciseTime = (key, value) => {
+    const next = { ...f, precise: true, rangeId: 'custom', [key]: value };
+    if (key === 'startDateTime' && value) next.startDate = value.slice(0, 10);
+    if (key === 'endDateTime' && value) next.endDate = value.slice(0, 10);
+    setF(next);
   };
 
   const toggleSet = (key, value) => {
@@ -104,6 +130,17 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
                 className={`chip ${f.rangeId === r.id ? 'active' : ''}`}
                 onClick={() => setRange(r)}>{r.label}</button>
             ))}
+          </div>
+          <div className={`time-range ${f.precise ? 'active' : ''}`}>
+            <DateTimeField
+              value={f.startDateTime || ''}
+              onChange={value => setPreciseTime('startDateTime', value)}
+              title="开始时间" />
+            <span className="time-sep">至</span>
+            <DateTimeField
+              value={f.endDateTime || ''}
+              onChange={value => setPreciseTime('endDateTime', value)}
+              title="结束时间" />
           </div>
         </div>
 
@@ -162,6 +199,137 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
       </div>
     </div>
   );
+}
+
+function DateTimeField({ value, onChange, title }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const parsed = useMemo(() => parseDateTimeValue(value), [value]);
+  const [viewMonth, setViewMonth] = useState(() => new Date(parsed.year, parsed.month - 1, 1));
+
+  useEffect(() => {
+    setViewMonth(new Date(parsed.year, parsed.month - 1, 1));
+  }, [parsed.year, parsed.month]);
+
+  useEffect(() => {
+    const onDocClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const commit = (patch) => {
+    const next = { ...parsed, ...patch };
+    onChange(formatDateTimeValue(next));
+  };
+
+  const moveMonth = (delta) => {
+    setViewMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+  };
+
+  const days = monthCells(viewMonth);
+  const monthLabel = `${viewMonth.getFullYear()}年${String(viewMonth.getMonth() + 1).padStart(2, '0')}月`;
+
+  return (
+    <div className="dt-field" ref={ref}>
+      <button className="time-trigger" type="button" title={title} onClick={() => setOpen(o => !o)}>
+        <span>{displayDateTime(value)}</span>
+        <svg className="time-icon" viewBox="0 0 16 16" fill="none">
+          <path d="M4 2.5v2M12 2.5v2M3 6.5h10M4 4h8c.83 0 1.5.67 1.5 1.5v6c0 .83-.67 1.5-1.5 1.5H4c-.83 0-1.5-.67-1.5-1.5v-6C2.5 4.67 3.17 4 4 4Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="dt-popover">
+          <div className="dt-head">
+            <button className="dt-nav" type="button" onClick={() => moveMonth(-1)}>‹</button>
+            <div className="dt-title">{monthLabel}</div>
+            <button className="dt-nav" type="button" onClick={() => moveMonth(1)}>›</button>
+          </div>
+          <div className="dt-week">
+            {['一', '二', '三', '四', '五', '六', '日'].map(d => <span key={d}>{d}</span>)}
+          </div>
+          <div className="dt-grid">
+            {days.map(day => (
+              <button
+                key={day.key}
+                type="button"
+                className={`dt-day ${day.inMonth ? '' : 'muted'} ${day.value === parsed.date ? 'active' : ''}`}
+                onClick={() => commit({
+                  year: day.date.getFullYear(),
+                  month: day.date.getMonth() + 1,
+                  day: day.date.getDate()
+                })}>
+                {day.date.getDate()}
+              </button>
+            ))}
+          </div>
+          <div className="dt-time">
+            <label>
+              <span>时</span>
+              <input
+                value={String(parsed.hour).padStart(2, '0')}
+                inputMode="numeric"
+                maxLength={2}
+                onChange={e => commit({ hour: clampInt(e.target.value, 0, 23) })} />
+            </label>
+            <label>
+              <span>分</span>
+              <input
+                value={String(parsed.minute).padStart(2, '0')}
+                inputMode="numeric"
+                maxLength={2}
+                onChange={e => commit({ minute: clampInt(e.target.value, 0, 59) })} />
+            </label>
+            <button type="button" className="dt-now" onClick={() => onChange(U.toDateTimeLocalValue(new Date()))}>现在</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function parseDateTimeValue(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  const now = new Date();
+  const year = match ? Number(match[1]) : now.getFullYear();
+  const month = match ? Number(match[2]) : now.getMonth() + 1;
+  const day = match ? Number(match[3]) : now.getDate();
+  const hour = match ? Number(match[4]) : 0;
+  const minute = match ? Number(match[5]) : 0;
+  return { year, month, day, hour, minute, date: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
+
+function formatDateTimeValue(value) {
+  return `${value.year}-${String(value.month).padStart(2, '0')}-${String(value.day).padStart(2, '0')}T${String(value.hour).padStart(2, '0')}:${String(value.minute).padStart(2, '0')}`;
+}
+
+function displayDateTime(value) {
+  return String(value || '').replace('T', ' ');
+}
+
+function monthCells(monthDate) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const start = new Date(first);
+  const offset = (first.getDay() + 6) % 7;
+  start.setDate(first.getDate() - offset);
+  return Array.from({ length: 42 }, (_, i) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + i);
+    const value = U.localDateStr(date);
+    return {
+      date,
+      value,
+      key: value,
+      inMonth: date.getMonth() === monthDate.getMonth()
+    };
+  });
+}
+
+function clampInt(value, min, max) {
+  const digits = String(value || '').replace(/\D/g, '');
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(max, n));
 }
 
 // ───────────────────────────────────────────────────────────────
