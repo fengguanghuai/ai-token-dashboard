@@ -293,10 +293,14 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
+      appendToBody: true,
+      confine: true,
+      transitionDuration: 0,
       backgroundColor: '#fff',
       borderColor: 'oklch(0.92 0.004 80)',
       borderWidth: 1,
       textStyle: { color: 'oklch(0.18 0.005 80)', fontSize: 12 },
+      extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
       formatter: p => `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>
         <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
         <div style="font-size:11px;color:oklch(0.55 0.005 80)">${(p.percent || 0).toFixed(1)}%</div>`
@@ -312,7 +316,10 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
         borderColor: '#fff',
         borderWidth: 3
       },
-      emphasis: { scaleSize: 4, itemStyle: { shadowBlur: 10, shadowColor: 'oklch(0 0 0 / 0.06)' } },
+      emphasis: {
+        scale: false,
+        itemStyle: { shadowBlur: 10, shadowColor: 'oklch(0 0 0 / 0.06)' }
+      },
       data: data.map(d => ({
         name: d.name,
         value: d.value,
@@ -330,8 +337,8 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
         </div>
       </div>
       <div className="donut-row">
-        <div style={{position: 'relative', width: 200, height: 200, flexShrink: 0}}>
-          <EChart option={option} height={200}/>
+        <div style={{position: 'relative', width: 188, height: 188, flexShrink: 0}}>
+          <EChart option={option} height={188}/>
           <div style={{
             position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
             pointerEvents: 'none', textAlign: 'center'
@@ -350,7 +357,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
               className={`legend-item ${focused && focused !== d.name ? 'dim' : ''}`}
               onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
               <span className="legend-swatch" style={{background: d.color}}/>
-              <span className="legend-name">{d.name}</span>
+              <span className="legend-name" title={d.name}>{d.name}</span>
               <span className="legend-val">{U.compactCN(d.value)}</span>
               <span className="legend-pct">{sum ? ((d.value / sum) * 100).toFixed(1) : 0}%</span>
             </div>
