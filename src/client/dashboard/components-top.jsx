@@ -66,6 +66,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport }) {
   const RANGES = [
+    { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
     { id: '14d', label: '14 天', days: 14 },
     { id: '30d', label: '30 天', days: 30 },
