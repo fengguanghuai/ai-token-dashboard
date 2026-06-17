@@ -45,6 +45,8 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -305,20 +307,35 @@ export async function collect(pricingData = null) {
   const nestedPaths = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
   const filePaths = [...new Set(nestedPaths.flat())];
 
-  const dailyMap = new Map();   // "date::model" → aggregated
-  const wmMap    = new Map();   // "workspace::model" → aggregated
+  const dailyMap = new Map();   // "date::model" -> aggregated
+  const wmMap    = new Map();   // "workspace::model" -> aggregated
+  const events   = [];
   const seenEventKeys = new Set();
 
   for (const filePath of filePaths) {
     const sessionId = basename(filePath).replace(/\.jsonl$/, '');
-    const events    = await parseSessionFile(filePath, sessionId);
+    const parsedEvents = await parseSessionFile(filePath, sessionId);
 
-    for (const { timestamp, date, model, workspace, tokens } of events) {
+    for (const { timestamp, date, model, workspace, tokens } of parsedEvents) {
       const eventKey = codexEventDedupKey({ timestamp, model, tokens });
       if (eventKey && seenEventKeys.has(eventKey)) continue;
       if (eventKey) seenEventKeys.add(eventKey);
 
       const workspaceKey = workspace || sessionId;
+      if (keepTimeEvent(timestamp)) {
+        events.push({
+          client: CLIENT_KEY,
+          eventKey: eventKey || `${filePath}::${timestamp}`,
+          eventTime: timestamp,
+          usageDate: date,
+          sessionId,
+          workspaceKey,
+          workspaceLabel: decodeWorkspace(workspaceKey),
+          model,
+          tokens,
+          cost: calculateCost(model, tokens, pricingData)
+        });
+      }
 
       // Daily
       const dk = `${date}::${model}`;
@@ -340,7 +357,7 @@ export async function collect(pricingData = null) {
     }
   }
 
-  return buildOutput(dailyMap, wmMap, pricingData);
+  return { ...buildOutput(dailyMap, wmMap, pricingData), eventsJson: { events } };
 }
 
 function codexEventDedupKey({ timestamp, model, tokens }) {
@@ -354,6 +371,11 @@ function codexEventDedupKey({ timestamp, model, tokens }) {
     tokens.cacheWrite,
     tokens.reasoning
   ].join('::');
+}
+
+function keepTimeEvent(timestamp) {
+  const ms = Date.parse(timestamp || '');
+  return Number.isFinite(ms) && ms >= EVENT_CUTOFF_MS;
 }
 
 /**
@@ -371,8 +393,9 @@ function decodeWorkspace(raw) {
 function buildOutput(dailyMap, wmMap, pricingData) {
   const byDate = new Map();
   for (const row of dailyMap.values()) {
-    if (!byDate.has(row.date)) byDate.set(row.date, []);
-    byDate.get(row.date).push(row);
+    const date = typeof row.date === 'string' && row.date ? row.date : 'unknown';
+    if (!byDate.has(date)) byDate.set(date, []);
+    byDate.get(date).push(row);
   }
 
   const contributions = [...byDate.entries()]

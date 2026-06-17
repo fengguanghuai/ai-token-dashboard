@@ -1,6 +1,6 @@
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
-import { openDb, recordRun, upsertDaily, upsertSession } from './db.mjs';
+import { deleteTimeUsageForSource, openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadPricing } from './pricing.mjs';
 
 const COLLECTORS = [
@@ -19,6 +19,7 @@ const exportPayload = {
   device,
   collectedAt: new Date().toISOString(),
   daily: [],
+  time: [],
   sessions: [],
   runs: []
 };
@@ -41,10 +42,11 @@ async function collectLocal() {
   for (const { module, label } of COLLECTORS) {
     let graphJson;
     let modelsJson;
+    let eventsJson;
 
     try {
       const { collect } = await import(module);
-      ({ graphJson, modelsJson } = await collect(pricingData));
+      ({ graphJson, modelsJson, eventsJson } = await collect(pricingData));
     } catch (error) {
       const run = {
         device,
@@ -69,20 +71,75 @@ async function collectLocal() {
     runInTransaction(db, () => sessionRows.forEach((row) => upsertSession(db, row)));
     exportPayload.sessions.push(...sessionRows);
 
+    const timeRows = normalizeTimeRows(eventsJson, device);
+    runInTransaction(db, () => {
+      deleteTimeUsageForSource(db, device, label);
+      timeRows.forEach((row) => upsertTimeUsage(db, row));
+    });
+    exportPayload.time.push(...timeRows);
+
     const run = {
       device,
       source: label,
       status: dailyRows.length || sessionRows.length ? 'ok' : 'empty',
-      message: `daily=${dailyRows.length}, workspace_model=${sessionRows.length}`,
+      message: `daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}`,
       collectedAt: exportPayload.collectedAt,
       command: `js-collector:${module}`
     };
     recordRun(db, run);
     exportPayload.runs.push(run);
-    console.log(`[${label}] daily=${dailyRows.length}, workspace_model=${sessionRows.length}`);
+    console.log(`[${label}] daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}`);
   }
 
   if (anyError) process.exitCode = 1;
+}
+
+function normalizeTimeRows(json, deviceName) {
+  const events = Array.isArray(json?.events) ? json.events : [];
+  return events.map((entry, index) => {
+    const tokens = normalizeTokens(entry.tokens);
+    const eventTime = normalizeEventTime(entry.eventTime || entry.timestamp);
+    const usageDate = entry.usageDate || entry.date || eventTime.slice(0, 10);
+    const source = sourceLabel(entry.client);
+    const model = entry.modelId || entry.model || entry.model_id || 'unknown';
+    return {
+      device: deviceName,
+      source,
+      eventKey: entry.eventKey || [
+        entry.client || 'unknown',
+        eventTime,
+        entry.sessionId || entry.workspaceKey || '',
+        model,
+        tokenTotal(tokens),
+        index
+      ].join(':'),
+      eventTime,
+      usageDate,
+      model,
+      projectPath: entry.workspaceLabel || entry.projectPath || entry.workspaceKey || null,
+      sessionId: entry.sessionId || null,
+      inputTokens: tokens.input,
+      outputTokens: tokens.output,
+      cacheCreationTokens: tokens.cacheWrite,
+      cacheReadTokens: tokens.cacheRead,
+      reasoningOutputTokens: tokens.reasoning,
+      totalTokens: tokenTotal(tokens),
+      costUSD: entry.cost || 0
+    };
+  }).filter(row => row.eventTime && row.usageDate && row.totalTokens > 0);
+}
+
+function normalizeEventTime(value) {
+  if (!value) return '';
+  if (typeof value === 'number') {
+    const ms = value < 10_000_000_000 ? value * 1000 : value;
+    return new Date(ms).toISOString();
+  }
+  const text = String(value).trim();
+  if (!text) return '';
+  const normalized = text.includes('T') ? text : text.replace(' ', 'T');
+  const date = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized) ? normalized : `${normalized}Z`);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
 }
 
 function runInTransaction(database, work) {

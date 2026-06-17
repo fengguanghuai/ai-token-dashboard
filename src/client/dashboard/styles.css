@@ -325,6 +325,206 @@ button, input, select { font-family: inherit; color: inherit; }
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
 }
 
+.time-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.time-range.active {
+  background: oklch(0.97 0.02 265);
+  border-color: oklch(0.85 0.04 265);
+}
+
+.time-sep {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dt-field {
+  position: relative;
+  display: inline-flex;
+}
+
+.time-trigger {
+  width: 158px;
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.time-trigger:hover { background: var(--surface-2); }
+.time-trigger:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--c-indigo), transparent 70%);
+}
+
+.time-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.dt-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: 252px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 14px 36px -16px rgb(0 0 0 / 0.22), 0 0 0 1px color-mix(in oklab, var(--border), transparent 20%);
+}
+
+.dt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.dt-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-nav {
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.dt-nav:hover {
+  background: var(--surface-2);
+  border-color: var(--border-2);
+}
+
+.dt-week,
+.dt-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.dt-week {
+  margin-bottom: 4px;
+}
+
+.dt-week span {
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.dt-day {
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.dt-day:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.dt-day.muted {
+  color: var(--subtle);
+}
+
+.dt-day.active {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.dt-time {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dt-time label {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.dt-time input {
+  width: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.dt-time input:focus {
+  outline: 0;
+}
+
+.dt-now {
+  margin-left: auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--c-indigo);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.dt-now:hover {
+  background: oklch(0.97 0.02 265);
+  border-color: oklch(0.85 0.04 265);
+}
+
 .pill {
   height: 28px;
   padding: 0 10px 0 8px;
