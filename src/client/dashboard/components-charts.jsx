@@ -307,17 +307,22 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
     },
     series: [{
       type: 'pie',
-      radius: ['62%', '92%'],
+      animationDurationUpdate: 220,
+      animationEasingUpdate: 'cubicOut',
+      radius: ['48%', '78%'],
       center: ['50%', '50%'],
+      minAngle: 2,
       avoidLabelOverlap: true,
       label: { show: false },
       labelLine: { show: false },
       itemStyle: {
+        borderRadius: 8,
         borderColor: '#fff',
-        borderWidth: 3
+        borderWidth: 2
       },
       emphasis: {
-        scale: false,
+        scale: true,
+        scaleSize: 3,
         itemStyle: { shadowBlur: 10, shadowColor: 'oklch(0 0 0 / 0.06)' }
       },
       data: data.map(d => ({
@@ -329,23 +334,23 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
   };
 
   return (
-    <div className="panel">
-      <div className="panel-header">
+    <div className="panel source-donut-panel">
+      <div className="panel-header source-donut-header">
         <div>
           <h2 className="panel-title">来源占比</h2>
-          <p className="panel-sub">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>
         </div>
+        <p className="panel-sub source-donut-note">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>
       </div>
-      <div className="donut-row">
-        <div style={{position: 'relative', width: 188, height: 188, flexShrink: 0}}>
-          <EChart option={option} height={188}/>
+      <div className="donut-stack">
+        <div className="donut-stage">
+          <EChart option={option} height={236}/>
           <div style={{
             position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
             pointerEvents: 'none', textAlign: 'center'
           }}>
             <div>
               <div style={{fontSize: 10.5, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase'}}>合计</div>
-              <div style={{fontSize: 19, fontWeight: 600, fontVariantNumeric: 'tabular-nums', marginTop: 2}}>
+              <div style={{fontSize: 22, fontWeight: 600, fontVariantNumeric: 'tabular-nums', marginTop: 2}}>
                 {U.compactCN(sum)}
               </div>
             </div>

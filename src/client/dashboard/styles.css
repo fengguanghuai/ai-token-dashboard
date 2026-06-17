@@ -791,19 +791,51 @@ button, input, select { font-family: inherit; color: inherit; }
 
 /* ─── Source Donut + legend ──────────────────────────────── */
 
-.donut-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
+.source-donut-panel {
+  min-height: 412px;
 }
-.donut-row .chart { height: 200px; width: 200px; flex-shrink: 0; }
-.legend { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+.source-donut-header {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.source-donut-note {
+  margin: 0;
+  text-align: right;
+  max-width: 190px;
+}
+
+.donut-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.donut-stage {
+  position: relative;
+  width: min(236px, 100%);
+  height: 236px;
+  margin: 0 auto;
+}
+
+.donut-stage .chart { height: 236px; width: 236px; }
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
 .legend-item {
   display: grid;
-  grid-template-columns: 8px minmax(88px, 1fr) max-content 42px;
-  align-items: center;
-  column-gap: 6px;
-  padding: 6px 6px;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 7px;
+  row-gap: 2px;
+  padding: 7px 8px;
   border-radius: 7px;
   cursor: pointer;
   font-size: 12.5px;
@@ -811,8 +843,9 @@ button, input, select { font-family: inherit; color: inherit; }
 }
 .legend-item:hover { background: var(--surface-2); }
 .legend-item.dim { opacity: 0.4; }
-.legend-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.legend-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; margin-top: 4px; }
 .legend-name {
+  grid-column: 2;
   min-width: 0;
   overflow: visible;
   text-overflow: clip;
@@ -821,13 +854,17 @@ button, input, select { font-family: inherit; color: inherit; }
   line-height: 1.25;
 }
 .legend-val {
+  grid-column: 2;
+  grid-row: 2;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   font-size: 11.5px;
-  justify-self: end;
   white-space: nowrap;
+  padding-right: 46px;
 }
 .legend-pct {
+  grid-column: 2;
+  grid-row: 2;
   font-variant-numeric: tabular-nums;
   color: var(--text);
   font-weight: 600;
