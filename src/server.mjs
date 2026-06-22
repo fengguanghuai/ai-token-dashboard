@@ -44,7 +44,7 @@ function handleApi(req, url, res) {
           COALESCE(SUM(total_tokens), 0) AS totalTokens,
           COALESCE(SUM(input_tokens), 0) AS inputTokens,
           COALESCE(SUM(output_tokens), 0) AS outputTokens,
-          COALESCE(SUM(cache_creation_tokens + cache_read_tokens + cached_input_tokens), 0) AS cacheTokens,
+          COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) AS cacheTokens,
           COALESCE(SUM(reasoning_output_tokens), 0) AS reasoningTokens,
           COALESCE(SUM(cost_usd), 0) AS costUSD
         FROM daily_usage
@@ -99,7 +99,6 @@ function handleApi(req, url, res) {
         output_tokens AS outputTokens,
         cache_creation_tokens AS cacheCreationTokens,
         cache_read_tokens AS cacheReadTokens,
-        cached_input_tokens AS cachedInputTokens,
         reasoning_output_tokens AS reasoningOutputTokens,
         total_tokens AS totalTokens,
         cost_usd AS costUSD
@@ -123,7 +122,6 @@ function handleApi(req, url, res) {
         output_tokens AS outputTokens,
         cache_creation_tokens AS cacheCreationTokens,
         cache_read_tokens AS cacheReadTokens,
-        cached_input_tokens AS cachedInputTokens,
         reasoning_output_tokens AS reasoningOutputTokens,
         total_tokens AS totalTokens,
         cost_usd AS costUSD
@@ -162,7 +160,6 @@ function handleApi(req, url, res) {
         output_tokens AS outputTokens,
         cache_creation_tokens AS cacheCreationTokens,
         cache_read_tokens AS cacheReadTokens,
-        cached_input_tokens AS cachedInputTokens,
         reasoning_output_tokens AS reasoningOutputTokens,
         total_tokens AS totalTokens,
         cost_usd AS costUSD

@@ -35,7 +35,6 @@ function initSchema(db) {
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
       reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0,
@@ -54,7 +53,6 @@ function initSchema(db) {
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
       reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0,
@@ -75,7 +73,6 @@ function initSchema(db) {
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
       cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-      cached_input_tokens INTEGER NOT NULL DEFAULT 0,
       reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
       total_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0,
@@ -97,6 +94,13 @@ function initSchema(db) {
     WHERE pricing_locked_at IS NULL
       AND usage_date < date('now', 'localtime')
   `);
+
+  // Drop the legacy cached_input_tokens column. Codex's cached-input metric is
+  // already folded into cache_read_tokens at collection time, so this column was
+  // never written and stayed 0.
+  for (const table of ['daily_usage', 'session_usage', 'time_usage']) {
+    dropColumn(db, table, 'cached_input_tokens');
+  }
 }
 
 export function upsertTimeUsage(db, row) {
@@ -104,8 +108,8 @@ export function upsertTimeUsage(db, row) {
     INSERT INTO time_usage (
       device, source, event_key, event_time, usage_date, model, project_path, session_id,
       input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-      cached_input_tokens, reasoning_output_tokens, total_tokens, cost_usd, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      reasoning_output_tokens, total_tokens, cost_usd, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(device, source, event_key) DO UPDATE SET
       event_time = excluded.event_time,
       usage_date = excluded.usage_date,
@@ -116,7 +120,6 @@ export function upsertTimeUsage(db, row) {
       output_tokens = excluded.output_tokens,
       cache_creation_tokens = excluded.cache_creation_tokens,
       cache_read_tokens = excluded.cache_read_tokens,
-      cached_input_tokens = excluded.cached_input_tokens,
       reasoning_output_tokens = excluded.reasoning_output_tokens,
       total_tokens = excluded.total_tokens,
       cost_usd = excluded.cost_usd,
@@ -134,7 +137,6 @@ export function upsertTimeUsage(db, row) {
     row.outputTokens || 0,
     row.cacheCreationTokens || 0,
     row.cacheReadTokens || 0,
-    row.cachedInputTokens || 0,
     row.reasoningOutputTokens || 0,
     row.totalTokens || 0,
     row.costUSD || 0
@@ -152,10 +154,10 @@ export function upsertDaily(db, row) {
   db.prepare(`
     INSERT INTO daily_usage (
       device, source, usage_date, model, input_tokens, output_tokens,
-      cache_creation_tokens, cache_read_tokens, cached_input_tokens,
+      cache_creation_tokens, cache_read_tokens,
       reasoning_output_tokens, total_tokens, cost_usd, pricing_locked_at, updated_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
       CASE WHEN ? < date('now', 'localtime') THEN datetime('now') ELSE NULL END,
       datetime('now')
     )
@@ -164,7 +166,6 @@ export function upsertDaily(db, row) {
       output_tokens = excluded.output_tokens,
       cache_creation_tokens = excluded.cache_creation_tokens,
       cache_read_tokens = excluded.cache_read_tokens,
-      cached_input_tokens = excluded.cached_input_tokens,
       reasoning_output_tokens = excluded.reasoning_output_tokens,
       total_tokens = excluded.total_tokens,
       cost_usd = CASE
@@ -185,7 +186,6 @@ export function upsertDaily(db, row) {
     row.outputTokens || 0,
     row.cacheCreationTokens || 0,
     row.cacheReadTokens || 0,
-    row.cachedInputTokens || 0,
     row.reasoningOutputTokens || 0,
     row.totalTokens || 0,
     row.costUSD || 0,
@@ -199,13 +199,19 @@ function ensureColumn(db, tableName, columnName, columnDefinition) {
   db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
 }
 
+function dropColumn(db, tableName, columnName) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+  if (!columns.some(column => column.name === columnName)) return;
+  db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
+}
+
 export function upsertSession(db, row) {
   db.prepare(`
     INSERT INTO session_usage (
       device, source, session_id, last_activity, project_path, input_tokens,
       output_tokens, cache_creation_tokens, cache_read_tokens,
-      cached_input_tokens, reasoning_output_tokens, total_tokens, cost_usd, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      reasoning_output_tokens, total_tokens, cost_usd, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(device, source, session_id) DO UPDATE SET
       last_activity = excluded.last_activity,
       project_path = excluded.project_path,
@@ -213,7 +219,6 @@ export function upsertSession(db, row) {
       output_tokens = excluded.output_tokens,
       cache_creation_tokens = excluded.cache_creation_tokens,
       cache_read_tokens = excluded.cache_read_tokens,
-      cached_input_tokens = excluded.cached_input_tokens,
       reasoning_output_tokens = excluded.reasoning_output_tokens,
       total_tokens = excluded.total_tokens,
       cost_usd = excluded.cost_usd,
@@ -228,7 +233,6 @@ export function upsertSession(db, row) {
     row.outputTokens || 0,
     row.cacheCreationTokens || 0,
     row.cacheReadTokens || 0,
-    row.cachedInputTokens || 0,
     row.reasoningOutputTokens || 0,
     row.totalTokens || 0,
     row.costUSD || 0
