@@ -184,6 +184,7 @@ docker compose up -d
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | 定时采集间隔秒数，最低 10 秒 |
 | `SCHEDULED_COLLECT_RUN_ON_START` | `false` | 服务启动后是否立即采集一次 |
 | `COLLECT_DEVICE` | 主机名 | 定时采集写入记录的设备标签 |
+| `COLLECTION_RUNS_KEEP` | `500` | 只保留最近 N 条采集运行记录，超出的会在每次打开数据库时清理 |
 
 ### 定价缓存
 

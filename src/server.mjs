@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { extname, join, resolve } from 'node:path';
 import { URL } from 'node:url';
-import { openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
+import { openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
 
 const port = Number(process.env.PORT || 4173);
@@ -110,6 +110,7 @@ function handleApi(req, url, res) {
         collected_at AS collectedAt
       FROM collection_runs
       ORDER BY id DESC
+      LIMIT 500
     `);
     const rawTime = all(`
       SELECT rowid AS id, device, source,
@@ -345,6 +346,9 @@ async function handleIngest(req, res) {
       db.exec('ROLLBACK');
       throw error;
     }
+
+    // The hub stays up across many ingests; keep collection_runs bounded.
+    if (runRows.length) pruneCollectionRuns(db);
 
     sendJson(res, { ok: true, daily: dailyRows.length, time: timeRows.length, sessions: sessionRows.length, runs: runRows.length });
   } catch (error) {

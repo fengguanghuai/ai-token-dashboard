@@ -101,6 +101,24 @@ function initSchema(db) {
   for (const table of ['daily_usage', 'session_usage', 'time_usage']) {
     dropColumn(db, table, 'cached_input_tokens');
   }
+
+  // collection_runs grows by one row per collector per run and is never read in
+  // bulk, so cap it on every open to keep the table (and /api/data) bounded.
+  pruneCollectionRuns(db);
+}
+
+/**
+ * Keep only the most recent `keep` collection_runs rows. Every collect run adds
+ * one row per collector, so without this the table grows without bound.
+ */
+export function pruneCollectionRuns(db, keep = Number(process.env.COLLECTION_RUNS_KEEP) || 500) {
+  const limit = Number.isFinite(keep) && keep > 0 ? Math.floor(keep) : 500;
+  db.prepare(`
+    DELETE FROM collection_runs
+    WHERE id NOT IN (
+      SELECT id FROM collection_runs ORDER BY id DESC LIMIT ?
+    )
+  `).run(limit);
 }
 
 export function upsertTimeUsage(db, row) {
