@@ -103,14 +103,15 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
     blur: { itemStyle: { opacity: 1 } },
     select: { itemStyle: { opacity: 1 } }
   };
-  const stableLineState = (width = 2, areaOpacity = null) => {
-    const area = areaOpacity == null ? {} : { areaStyle: { opacity: areaOpacity } };
-    return {
-      emphasis: { focus: 'none', lineStyle: { width, opacity: 1 }, itemStyle: { opacity: 1 }, ...area },
-      blur: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 }, ...area },
-      select: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 }, ...area }
-    };
-  };
+  // NOTE: do NOT put `areaStyle` in any state object. The base areaStyle uses a
+  // linear-gradient color; including areaStyle in emphasis/blur/select makes ECharts
+  // animate the gradient on hover, which crashes its color interpolator
+  // ("Cannot read properties of undefined (reading 'length')") and freezes the chart.
+  const stableLineState = (width = 2) => ({
+    emphasis: { focus: 'none', lineStyle: { width, opacity: 1 }, itemStyle: { opacity: 1 } },
+    blur: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 } },
+    select: { lineStyle: { opacity: 1 }, itemStyle: { opacity: 1 } }
+  });
 
   if (mode === 'stacked' || mode === 'bar') {
     sources.forEach((src, i) => {
@@ -154,7 +155,10 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
             ]
           }
         },
-        ...stableLineState(2.6, 0.08),
+        // Emphasis is disabled here: hovering an area-filled line would make ECharts
+        // animate its gradient areaStyle, crashing the color interpolator and freezing
+        // the whole chart. Tooltip + axisPointer still work without emphasis.
+        emphasis: { disabled: true },
         data: dates.map(d => byKey.get(`${d}::${src}`) || 0)
       });
     });
