@@ -2,12 +2,14 @@
    Main App — real data from /api/data
    ============================================================= */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
 import { TablePanel, DrillDrawer } from './components-tables.jsx';
 import './styles.css';
+
+const EMPTY_TIME = [];   // stable reference so memoized selectors don't churn
 
 function summarizeCollectOutput(stdout) {
   return stdout
@@ -17,10 +19,26 @@ function summarizeCollectOutput(stdout) {
 
 export function App() {
   const [M, setM] = useState(null);
+  const [timeRows, setTimeRows] = useState(null);   // null until the precise view asks for it
   const [loadError, setLoadError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [collectStatus, setCollectStatus] = useState(null);
+  const timeRequested = useRef(false);
+
+  // ───── Lazy per-event (time) data — only the precise view needs it ─────
+  const loadTime = useCallback(() => {
+    return fetch('/api/time')
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => setTimeRows(data.time || []))
+      .catch(() => {});
+  }, []);
+
+  const ensureTime = useCallback(() => {
+    if (timeRequested.current) return;
+    timeRequested.current = true;
+    loadTime();
+  }, [loadTime]);
 
   // ───── Load data from API ─────
   const loadData = useCallback(() => {
@@ -32,7 +50,7 @@ export function App() {
       })
       .then(data => {
         // Assign colors to sources dynamically
-        const sourceNames = [...new Set([...(data.daily || []), ...(data.time || [])].map(r => r.source))];
+        const sourceNames = [...new Set((data.daily || []).map(r => r.source))];
         const SOURCES = sourceNames.map((name, i) => ({
           name,
           color: U.getSourceColor(name)
@@ -51,16 +69,17 @@ export function App() {
         setM({
           ...data,
           daily: data.daily || [],
-          time: data.time || [],
           SOURCES,
           HOURLY,
           today: U.daysAgo(0)
         });
         setLoadError(null);
+        // If the precise view already pulled time data, refresh it too.
+        if (timeRequested.current) loadTime();
       })
       .catch(err => setLoadError(err.message))
       .finally(() => setRefreshing(false));
-  }, []);
+  }, [loadTime]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -160,19 +179,20 @@ export function App() {
 
   return (
     <Dashboard
-      M={M}
+      M={{ ...M, time: timeRows || EMPTY_TIME }}
       refreshing={refreshing}
       collecting={collecting}
       collectStatus={collectStatus}
       onRefresh={loadData}
-      onCollect={runCollect} />
+      onCollect={runCollect}
+      onNeedTime={ensureTime} />
   );
 }
 
 /* =============================================================
    Dashboard (extracted so App stays clean)
    ============================================================= */
-function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onCollect }) {
+function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onCollect, onNeedTime }) {
   // ───── Filter state ─────
   const [filters, setFilters] = useState(() => ({
     rangeId: '30d',
@@ -190,6 +210,12 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
   const [trendMode, setTrendMode] = useState('stacked');
   const [drill, setDrill] = useState(null);
   const [focusedSource, setFocusedSource] = useState(null);
+
+  // The precise (datetime) view is the only consumer of per-event data; fetch it
+  // the first time the user switches into that mode.
+  useEffect(() => {
+    if (filters.precise) onNeedTime?.();
+  }, [filters.precise, onNeedTime]);
 
   // Build option lists
   const filterBaseRows = filters.precise && M.time.length ? M.time : M.daily;

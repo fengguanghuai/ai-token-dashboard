@@ -112,24 +112,6 @@ function handleApi(req, url, res) {
       ORDER BY id DESC
       LIMIT 500
     `);
-    const rawTime = all(`
-      SELECT rowid AS id, device, source,
-        event_time AS eventTime,
-        usage_date AS usageDate,
-        model,
-        project_path AS projectPath,
-        session_id AS sessionId,
-        input_tokens AS inputTokens,
-        output_tokens AS outputTokens,
-        cache_creation_tokens AS cacheCreationTokens,
-        cache_read_tokens AS cacheReadTokens,
-        reasoning_output_tokens AS reasoningOutputTokens,
-        total_tokens AS totalTokens,
-        cost_usd AS costUSD
-      FROM time_usage
-      ORDER BY event_time DESC
-    `);
-
     // Normalize sessions
     const sessions = rawSessions.map(s => ({
       ...s,
@@ -174,7 +156,6 @@ function handleApi(req, url, res) {
         ...d,
         projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null
       })),
-      time: rawTime,
       sessions,
       // Normalize runs: strip newlines from messages, shorten device names
       runs: rawRuns.map(r => ({
@@ -182,6 +163,30 @@ function handleApi(req, url, res) {
         message: r.message ? r.message.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '',
         device: r.device ? r.device.replace(/\.local$/, '').replace(/^(.{30}).+$/, '$1…') : r.device
       }))
+    });
+    return;
+  }
+  if (url.pathname === '/api/time') {
+    // Per-event rows are only needed for the precise (datetime) view, so the
+    // client loads them lazily instead of shipping the whole table on first paint.
+    sendJson(res, {
+      time: all(`
+        SELECT rowid AS id, device, source,
+          event_time AS eventTime,
+          usage_date AS usageDate,
+          model,
+          project_path AS projectPath,
+          session_id AS sessionId,
+          input_tokens AS inputTokens,
+          output_tokens AS outputTokens,
+          cache_creation_tokens AS cacheCreationTokens,
+          cache_read_tokens AS cacheReadTokens,
+          reasoning_output_tokens AS reasoningOutputTokens,
+          total_tokens AS totalTokens,
+          cost_usd AS costUSD
+        FROM time_usage
+        ORDER BY event_time DESC
+      `)
     });
     return;
   }
