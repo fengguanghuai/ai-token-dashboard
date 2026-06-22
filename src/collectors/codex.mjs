@@ -22,6 +22,7 @@ import { basename, join } from 'node:path';
 import { configuredPaths, configuredStrings, envPathList } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
+import { cachedParse, flushCache } from './parse-cache.mjs';
 
 /** Recursively collect all .jsonl file paths under a directory. */
 async function collectJsonlFiles(dir) {
@@ -45,6 +46,7 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
+const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -314,7 +316,7 @@ export async function collect(pricingData = null) {
 
   for (const filePath of filePaths) {
     const sessionId = basename(filePath).replace(/\.jsonl$/, '');
-    const parsedEvents = await parseSessionFile(filePath, sessionId);
+    const parsedEvents = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, fp => parseSessionFile(fp, sessionId));
 
     for (const { timestamp, date, model, workspace, tokens } of parsedEvents) {
       const eventKey = codexEventDedupKey({ timestamp, model, tokens });
@@ -357,6 +359,7 @@ export async function collect(pricingData = null) {
     }
   }
 
+  await flushCache(CLIENT_KEY);
   return { ...buildOutput(dailyMap, wmMap, pricingData), eventsJson: { events } };
 }
 

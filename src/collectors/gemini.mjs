@@ -23,9 +23,11 @@ import { homedir } from 'node:os';
 import { join, extname, basename } from 'node:path';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
+import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'gemini';
 export const SOURCE_LABEL = 'Gemini CLI';
+const CACHE_VERSION = 1;   // bump when parsed event shape changes
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -365,6 +367,20 @@ async function parseJsonlFile(filePath, fallbackDate) {
   return events;
 }
 
+/**
+ * Parse one Gemini session file (json or jsonl). The fallback date and session
+ * id are derived from the path + mtime, so this is a pure function of the file
+ * and safe to memoize by fingerprint.
+ */
+async function parseGeminiFile(filePath) {
+  const fallbackDate = localDateFromTimestamp(await fileMtime(filePath));
+  const sessionId = basename(filePath, extname(filePath));
+  const ext = extname(filePath).toLowerCase();
+  return ext === '.jsonl'
+    ? parseJsonlFile(filePath, fallbackDate)
+    : parseJsonFile(filePath, fallbackDate, sessionId);
+}
+
 // ---------------------------------------------------------------------------
 // Date extractor
 // ---------------------------------------------------------------------------
@@ -442,13 +458,7 @@ export async function collect(pricingData = null) {
 
     if (entry.isFile() && isAcceptedFile(entry, /* parentName */ '')) {
       // Legacy root-level session file
-      const fallbackDate = localDateFromTimestamp(await fileMtime(entryPath));
-      const sessionId    = basename(entry.name, extname(entry.name));
-      const ext          = extname(entry.name).toLowerCase();
-      const events = ext === '.jsonl'
-        ? await parseJsonlFile(entryPath, fallbackDate)
-        : await parseJsonFile(entryPath, fallbackDate, sessionId);
-      accumulate(events);
+      accumulate(await cachedParse(CLIENT_KEY, CACHE_VERSION, entryPath, parseGeminiFile));
       continue;
     }
 
@@ -460,19 +470,13 @@ export async function collect(pricingData = null) {
       for (const chatEntry of chatsEntries) {
         if (!chatEntry.isFile() || !isAcceptedFile(chatEntry, 'chats')) continue;
 
-        const filePath     = join(chatsDir, chatEntry.name);
-        const fallbackDate = localDateFromTimestamp(await fileMtime(filePath));
-        const sessionId    = basename(chatEntry.name, extname(chatEntry.name));
-        const ext          = extname(chatEntry.name).toLowerCase();
-
-        const events = ext === '.jsonl'
-          ? await parseJsonlFile(filePath, fallbackDate)
-          : await parseJsonFile(filePath, fallbackDate, sessionId);
-        accumulate(events);
+        const filePath = join(chatsDir, chatEntry.name);
+        accumulate(await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, parseGeminiFile));
       }
     }
   }
 
+  await flushCache(CLIENT_KEY);
   return buildOutput(dailyMap, wmMap, pricingData);
 }
 

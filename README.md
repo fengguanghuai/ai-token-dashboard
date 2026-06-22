@@ -186,6 +186,7 @@ docker compose up -d
 | `SCHEDULED_COLLECT_RUN_ON_START` | `false` | 服务启动后是否立即采集一次 |
 | `COLLECT_DEVICE` | 主机名 | 定时采集写入记录的设备标签 |
 | `COLLECTION_RUNS_KEEP` | `500` | 只保留最近 N 条采集运行记录，超出的会在每次打开数据库时清理 |
+| `PARSE_CACHE` | `1` | 增量解析缓存。开启时按文件指纹（mtime+大小）跳过未变化的会话文件；设为 `0` 关闭 |
 
 ### 定价缓存
 

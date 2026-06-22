@@ -30,9 +30,11 @@ import { join, basename, extname } from 'node:path';
 import { configuredPaths } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { canonicalProvider, localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
+import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY  = 'openclaw';
 export const SOURCE_LABEL = 'OpenClaw';
+const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -282,7 +284,7 @@ async function scanAgentsRoot(root) {
       const indexed   = await parseIndexFile(indexPath);
       for (const { sessionId, filePath } of indexed) {
         indexRefs.add(filePath);
-        const ev = await parseSessionFile(filePath, sessionId, agentPath);
+        const ev = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, () => parseSessionFile(filePath, sessionId, agentPath));
         events.push(...ev);
       }
     }
@@ -296,7 +298,7 @@ async function scanAgentsRoot(root) {
       if (indexRefs.has(filePath)) continue;   // already handled via index
 
       const sessionId = sessionIdFromFilename(fileEntry.name);
-      const ev = await parseSessionFile(filePath, sessionId, agentPath);
+      const ev = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, () => parseSessionFile(filePath, sessionId, agentPath));
       events.push(...ev);
     }
   }
@@ -350,6 +352,7 @@ export async function collect(pricingData = null) {
     accumulate(events);
   }
 
+  await flushCache(CLIENT_KEY);
   return buildOutput(dailyMap, wmMap);
 }
 

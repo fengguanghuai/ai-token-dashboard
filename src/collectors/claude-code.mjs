@@ -13,9 +13,11 @@ import { join, relative } from 'node:path';
 import { configuredBool, configuredPath, configuredPaths, envPathList } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
+import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'claude';
 export const SOURCE_LABEL = 'Claude Code';
+const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -260,7 +262,7 @@ export async function collect(pricingData = null) {
     for (const filePath of filePaths) {
       const workspaceKey = workspaceKeyFromPath(root, filePath);
       const workspaceLabel = decodeWorkspaceLabel(workspaceKey);
-      const records = await parseSessionFile(filePath);
+      const records = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, parseSessionFile);
 
       for (const record of records) {
         const tokens = extractTokens(record.usage);
@@ -316,6 +318,7 @@ export async function collect(pricingData = null) {
 
   const modelsJson = { entries };
 
+  await flushCache(CLIENT_KEY);
   return { graphJson, modelsJson, eventsJson: { events } };
 }
 

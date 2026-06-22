@@ -14,9 +14,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { configuredPath, configuredPaths, expandPath } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { canonicalProvider, inferProviderFromModel, localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
+import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'opencode';
 export const SOURCE_LABEL = 'OpenCode';
+const CACHE_VERSION = 1;   // bump when parsed message shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -314,13 +316,15 @@ export async function collect(pricingData = null) {
   };
 
   for (const dbPath of await discoverDbPaths()) {
-    for (const message of parseDbRows(dbPath)) addMessage(message);
+    const messages = await cachedParse(CLIENT_KEY, CACHE_VERSION, dbPath, p => parseDbRows(p));
+    for (const message of messages) addMessage(message);
   }
 
   for (const jsonPath of await collectJsonFiles(legacyMessageDir())) {
-    addMessage(await parseLegacyJsonFile(jsonPath));
+    addMessage(await cachedParse(CLIENT_KEY, CACHE_VERSION, jsonPath, parseLegacyJsonFile));
   }
 
+  await flushCache(CLIENT_KEY);
   return { ...buildOutput(dailyMap, wmMap), eventsJson: { events } };
 }
 
