@@ -11,10 +11,11 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 
 ---
 
-<!-- Replace with actual screenshots -->
 ## Screenshots
 
-> _Screenshots coming soon._
+![Token Studio dashboard](.github/assets/dashboard.png)
+
+> _Illustrative, using demo data._
 
 ---
 
