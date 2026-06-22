@@ -37,58 +37,6 @@ server.listen(port, () => {
 });
 
 function handleApi(req, url, res) {
-  if (url.pathname === '/api/summary') {
-    sendJson(res, {
-      totals: one(`
-        SELECT
-          COALESCE(SUM(total_tokens), 0) AS totalTokens,
-          COALESCE(SUM(input_tokens), 0) AS inputTokens,
-          COALESCE(SUM(output_tokens), 0) AS outputTokens,
-          COALESCE(SUM(cache_creation_tokens + cache_read_tokens), 0) AS cacheTokens,
-          COALESCE(SUM(reasoning_output_tokens), 0) AS reasoningTokens,
-          COALESCE(SUM(cost_usd), 0) AS costUSD
-        FROM daily_usage
-      `),
-      bySource: all(`
-        SELECT source, device,
-          SUM(total_tokens) AS totalTokens,
-          SUM(input_tokens) AS inputTokens,
-          SUM(output_tokens) AS outputTokens,
-          SUM(cost_usd) AS costUSD
-        FROM daily_usage
-        GROUP BY source, device
-        ORDER BY totalTokens DESC
-      `),
-      byDay: all(`
-        SELECT usage_date AS date, source, SUM(total_tokens) AS totalTokens, SUM(cost_usd) AS costUSD
-        FROM daily_usage
-        GROUP BY usage_date, source
-        ORDER BY usage_date
-      `),
-      byModel: all(`
-        SELECT source, model, SUM(total_tokens) AS totalTokens, SUM(cost_usd) AS costUSD
-        FROM daily_usage
-        WHERE model != ''
-        GROUP BY source, model
-        ORDER BY totalTokens DESC
-        LIMIT 20
-      `),
-      topSessions: all(`
-        SELECT device, source, session_id AS sessionId, last_activity AS lastActivity,
-          project_path AS projectPath, total_tokens AS totalTokens, cost_usd AS costUSD
-        FROM session_usage
-        ORDER BY total_tokens DESC
-        LIMIT 30
-      `),
-      runs: all(`
-        SELECT device, source, status, message, collected_at AS collectedAt
-        FROM collection_runs
-        ORDER BY id DESC
-        LIMIT 20
-      `)
-    });
-    return;
-  }
   if (url.pathname === '/api/data') {
     const rawSessions = all(`
       SELECT device, source,
@@ -395,10 +343,6 @@ function serveStatic(pathname, res) {
   }
   res.writeHead(200, { 'content-type': contentType(filePath) });
   createReadStream(filePath).pipe(res);
-}
-
-function one(sql) {
-  return db.prepare(sql).get();
 }
 
 function all(sql) {

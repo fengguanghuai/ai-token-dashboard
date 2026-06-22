@@ -32,7 +32,7 @@ npm run collect
 - `contributions[]`：用于生成 `daily_usage`
 - `entries[]`：用于生成 `session_usage`
 
-写入后由 `src/server.mjs` 暴露 `/api/data` 和 `/api/summary`，前端页面只消费这两个 API。
+写入后由 `src/server.mjs` 暴露 `/api/data`（日聚合 / 会话 / 采集记录）和 `/api/time`（精确视图按需加载的逐事件数据），前端页面消费这两个 API。
 
 ## 安全边界
 
