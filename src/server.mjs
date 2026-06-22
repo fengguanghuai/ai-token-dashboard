@@ -1,9 +1,9 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { extname, join, resolve } from 'node:path';
+import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
-import { openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
+import { deleteTimeUsageForSource, openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
 
 const port = Number(process.env.PORT || 4173);
@@ -201,7 +201,12 @@ function handleApi(req, url, res) {
 }
 
 function handleCollect(req, res) {
-  if (!isLoopback(req.socket.remoteAddress)) {
+  // The socket must be loopback AND the request must not have transited a proxy.
+  // Behind a reverse proxy every request's socket is loopback, so the proxy
+  // headers are what actually reveal a remote origin — reject if any are present.
+  const proxied = ['x-forwarded-for', 'x-forwarded-host', 'x-real-ip', 'forwarded']
+    .some(header => req.headers[header]);
+  if (!isLoopback(req.socket.remoteAddress) || proxied) {
     sendJson(res, { error: '采集接口仅允许本机访问' }, 403);
     return;
   }
@@ -335,9 +340,18 @@ async function handleIngest(req, res) {
     const sessionRows = Array.isArray(payload.sessions) ? payload.sessions : [];
     const runRows = Array.isArray(payload.runs) ? payload.runs : [];
 
+    // A push carries the device's full current time-usage window per source, so
+    // replace each (device, source) wholesale — mirroring local collect — instead
+    // of only upserting, which would leave events that have since disappeared.
+    const timePairs = new Map();
+    for (const row of timeRows) {
+      if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
+    }
+
     db.exec('BEGIN');
     try {
       dailyRows.forEach((row) => upsertDaily(db, row));
+      for (const row of timePairs.values()) deleteTimeUsageForSource(db, row.device, row.source);
       timeRows.forEach((row) => upsertTimeUsage(db, row));
       sessionRows.forEach((row) => upsertSession(db, row));
       runRows.forEach((row) => recordRun(db, row));
@@ -357,10 +371,19 @@ async function handleIngest(req, res) {
 }
 
 function serveStatic(pathname, res) {
-  const filePath = pathname === '/' ? join(staticDir, 'index.html')
-    : pathname === '/review' ? join(staticDir, 'index.html')
-    : join(staticDir, pathname);
-  if (!filePath.startsWith(staticDir) || !existsSync(filePath)) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    decoded = pathname;
+  }
+  const filePath = decoded === '/' || decoded === '/review'
+    ? join(staticDir, 'index.html')
+    : join(staticDir, decoded);
+  // Require the resolved path to live under staticDir. The trailing separator
+  // stops sibling dirs like `dist-foo` from matching the `dist` prefix.
+  const inRoot = filePath === staticDir || filePath.startsWith(staticDir + sep);
+  if (decoded.includes('\0') || !inRoot || !existsSync(filePath)) {
     res.writeHead(404);
     res.end('Not found');
     return;
