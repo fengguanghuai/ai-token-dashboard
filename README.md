@@ -20,7 +20,7 @@
 
 ## 功能特性
 
-- **多源采集** — 支持 Claude Code、Codex CLI、Gemini CLI、Hermes Agent、OpenClaw
+- **多源采集** — 支持 Claude Code、Codex CLI、OpenCode、Gemini CLI、Hermes Agent、OpenClaw
 - **双视图** — 交互式用量看板（`/`）和适合阅读与打印的复盘页（`/review`）
 - **成本追踪** — 基于随仓库提供的 LiteLLM + OpenRouter 定价缓存，按模型估算 token 费用
 - **页面内采集** — 在看板右上角点击「采集」即可触发一次本机采集（仅允许本机访问）
@@ -36,6 +36,7 @@
 |------|---------|
 | [Claude Code](https://claude.ai/code) | `~/.claude/projects/` |
 | [Codex CLI](https://github.com/openai/codex) | `~/.codex/sessions/` |
+| [OpenCode](https://github.com/sst/opencode) | `~/.local/share/opencode/` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/tmp/` |
 | Hermes Agent | `~/.hermes/state.db`（或 `$HERMES_HOME/state.db`） |
 | OpenClaw | `~/.openclaw/agents/` |
@@ -230,9 +231,11 @@ src/
 ├── db.mjs               # SQLite schema 与 upsert 辅助函数
 ├── pricing.mjs          # LiteLLM + OpenRouter 定价匹配与成本估算
 ├── update-pricing.mjs   # 刷新本地定价缓存
+├── collector-config.mjs # 读取 config/collectors.json 与路径展开
 ├── collectors/          # 各工具采集器
 │   ├── claude-code.mjs
 │   ├── codex.mjs
+│   ├── opencode.mjs
 │   ├── gemini.mjs
 │   ├── hermes.mjs
 │   ├── openclaw.mjs
