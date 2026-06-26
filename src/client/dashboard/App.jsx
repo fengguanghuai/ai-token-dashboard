@@ -42,8 +42,19 @@ export function App() {
   }, [loadTime]);
 
   // ───── Load data from API ─────
+  // ───── Live subscription-window quota (5h / 7d) ─────
+  // Refreshed on first load and whenever the user hits the refresh button —
+  // no background polling.
+  const loadQuota = useCallback(() => {
+    fetch('/api/quota')
+      .then(r => r.json())
+      .then(d => setQuota(d))
+      .catch(() => {});
+  }, []);
+
   const loadData = useCallback(() => {
     setRefreshing(true);
+    loadQuota();
     fetch('/api/data')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -80,21 +91,9 @@ export function App() {
       })
       .catch(err => setLoadError(err.message))
       .finally(() => setRefreshing(false));
-  }, [loadTime]);
+  }, [loadTime, loadQuota]);
 
   useEffect(() => { loadData(); }, [loadData]);
-
-  // ───── Live subscription-window quota (5h / 7d), refreshed periodically ─────
-  useEffect(() => {
-    let cancelled = false;
-    const load = () => fetch('/api/quota')
-      .then(r => r.json())
-      .then(d => { if (!cancelled) setQuota(d); })
-      .catch(() => {});
-    load();
-    const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
 
   const syncCollectStatus = useCallback((options = {}) => {
     return fetch('/api/collect/status')

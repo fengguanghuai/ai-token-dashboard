@@ -167,12 +167,21 @@ button, input, select { font-family: inherit; color: inherit; }
 }
 
 .quota-item {
+  position: relative;
   flex: 0 1 210px;
   min-width: 168px;
   padding: 7px 11px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
+}
+
+.quota-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .quota-tool {
@@ -182,7 +191,69 @@ button, input, select { font-family: inherit; color: inherit; }
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 4px;
+}
+
+.quota-head-right {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.quota-plan {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--c-indigo);
+  background: color-mix(in oklab, var(--c-indigo), transparent 88%);
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+
+.quota-caret {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+.quota-caret.open { transform: rotate(90deg); }
+
+.quota-item.clickable { cursor: pointer; }
+
+.quota-detail {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 7px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.quota-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+.quota-detail-row span { color: var(--muted); flex-shrink: 0; }
+.quota-detail-row b {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.quota-detail-sep {
+  height: 1px;
+  margin: 5px 0;
+  background: var(--border);
 }
 
 .quota-logo {

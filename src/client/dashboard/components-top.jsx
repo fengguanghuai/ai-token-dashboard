@@ -52,19 +52,86 @@ function QuotaWindowRow({ window }) {
   );
 }
 
-function QuotaItem({ tool, windows, error }) {
+function quotaResetAbs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function quotaDateOnly(iso) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function quotaDateTime(iso) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return null;
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Build the labelled rows shown in the click-to-expand detail panel.
+function quotaAccountRows(account) {
+  if (!account) return [];
+  const rows = [];
+  if (account.email) rows.push(['账号', account.email]);
+  if (account.name) rows.push(['名称', account.name]);
+  if (account.plan) rows.push(['套餐', account.plan]);
+  if (account.planUntil) rows.push(['订阅至', quotaDateOnly(account.planUntil) || account.planUntil]);
+  if (account.expiresAt) rows.push(['登录过期', quotaDateTime(account.expiresAt) || account.expiresAt]);
+  return rows;
+}
+
+function QuotaItem({ tool, windows, error, account }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
   const ordered = (windows || []).slice().sort(
     (a, b) => QUOTA_WINDOW_ORDER.indexOf(a.name) - QUOTA_WINDOW_ORDER.indexOf(b.name)
   ).slice(0, 2);
+  const hasDetail = !!(account && (account.email || account.plan)) || ordered.length > 0;
+
+  // Close the detail popover when clicking anywhere outside the card.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
   return (
-    <div className="quota-item">
-      <div className="quota-tool">
-        {QUOTA_TOOL_ICON[tool] && <img className="quota-logo" src={QUOTA_TOOL_ICON[tool]} alt="" />}
-        {tool}
+    <div className={`quota-item${hasDetail ? ' clickable' : ''}`} ref={ref}
+      onClick={hasDetail ? () => setOpen(o => !o) : undefined}>
+      <div className="quota-head">
+        <div className="quota-tool">
+          {QUOTA_TOOL_ICON[tool] && <img className="quota-logo" src={QUOTA_TOOL_ICON[tool]} alt="" />}
+          {tool}
+        </div>
+        <div className="quota-head-right">
+          {account?.plan && <span className="quota-plan">{account.plan}</span>}
+          {hasDetail && <span className={`quota-caret${open ? ' open' : ''}`}>›</span>}
+        </div>
       </div>
       {error
         ? <div className="quota-error">{error}</div>
         : ordered.map(w => <QuotaWindowRow key={w.name} window={w} />)}
+      {open && (
+        <div className="quota-detail">
+          {quotaAccountRows(account).map(([k, v]) => (
+            <div className="quota-detail-row" key={k}><span>{k}</span><b>{v}</b></div>
+          ))}
+          {ordered.length > 0 && <div className="quota-detail-sep" />}
+          {ordered.map(w => (
+            <div className="quota-detail-row" key={w.name}>
+              <span>{QUOTA_WINDOW_LABEL[w.name] || w.name}重置</span>
+              <b>{quotaResetAbs(w.resetsAt)}</b>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -76,10 +143,11 @@ function QuotaBars({ quota }) {
     const q = quota[key];
     if (!q) continue;
     if (q.ok && q.windows && q.windows.length) {
-      items.push(<QuotaItem key={key} tool={label} windows={q.windows} />);
+      items.push(<QuotaItem key={key} tool={label} windows={q.windows} account={q.account} />);
     } else if (q.status && q.status !== 'no_credentials') {
       // Keep the card visible on a transient/expired error instead of vanishing.
-      items.push(<QuotaItem key={key} tool={label} error={q.status === 'expired' ? '登录已过期' : '暂时获取不到'} />);
+      items.push(<QuotaItem key={key} tool={label} account={q.account}
+        error={q.status === 'expired' ? '登录已过期' : '暂时获取不到'} />);
     }
   }
   if (!items.length) return null;
