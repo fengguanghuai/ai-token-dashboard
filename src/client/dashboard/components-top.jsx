@@ -6,9 +6,59 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { U } from '../shared/utils.js';
 
 // ───────────────────────────────────────────────────────────────
+// Subscription-window quota bars (live, from /api/quota)
+// ───────────────────────────────────────────────────────────────
+const QUOTA_WINDOW_LABEL = {
+  five_hour: '5 小时',
+  seven_day: '7 天',
+  seven_day_opus: '7 天 · Opus',
+  seven_day_sonnet: '7 天 · Sonnet'
+};
+
+function quotaResetText(iso) {
+  if (!iso) return '';
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return '即将重置';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h > 0 ? `${h}h${m}m 后重置` : `${m}m 后重置`;
+}
+
+function QuotaItem({ tool, window }) {
+  const pct = Math.round((window.utilization || 0) * 100);
+  const tone = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'ok';
+  return (
+    <div className="quota-item" title={`${tool} · ${QUOTA_WINDOW_LABEL[window.name] || window.name} 窗口`}>
+      <div className="quota-head">
+        <span className="quota-tool">{tool}</span>
+        <span className="quota-win">{QUOTA_WINDOW_LABEL[window.name] || window.name}</span>
+        <span className="quota-pct">{pct}%</span>
+      </div>
+      <div className="quota-track">
+        <div className={`quota-fill quota-${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+      <div className="quota-reset">{quotaResetText(window.resetsAt)}</div>
+    </div>
+  );
+}
+
+function QuotaBars({ quota }) {
+  if (!quota || quota.disabled) return null;
+  const items = [];
+  for (const [key, label] of [['claude', 'Claude'], ['codex', 'Codex']]) {
+    const q = quota[key];
+    if (!q || !q.ok || !q.windows || !q.windows.length) continue;
+    const win = q.windows.find(w => w.name === 'five_hour') || q.windows[0];
+    items.push(<QuotaItem key={key} tool={label} window={win} />);
+  }
+  if (!items.length) return null;
+  return <div className="quota-bars">{items}</div>;
+}
+
+// ───────────────────────────────────────────────────────────────
 // Topbar
 // ───────────────────────────────────────────────────────────────
-function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus }) {
+function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus, quota }) {
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -16,7 +66,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
           <div className="brand-mark">TS</div>
           <div>
             <h1>Token Studio</h1>
-            <p className="brand-sub">个人 AI Token 消耗看板 · 跨工具实时同步</p>
+            <p className="brand-sub">个人 AI Token 消耗看板</p>
           </div>
         </div>
         <div className="page-switch">
@@ -24,6 +74,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
           <a href="/review" className="page-chip">复盘</a>
         </div>
       </div>
+      <QuotaBars quota={quota} />
       <div className="topbar-right">
         {collectStatus && (
           <div className={`collect-pill collect-${collectStatus.type}`} title={collectStatus.message}>

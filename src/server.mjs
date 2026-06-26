@@ -5,6 +5,15 @@ import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import { deleteTimeUsageForSource, openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
+import { queryQuota } from './quota.mjs';
+
+// Live subscription-window quota is the one feature that makes outbound calls
+// (to the vendors' usage endpoints, using the OAuth token the CLIs stored
+// locally). Opt-out with SUBSCRIPTION_QUOTA_ENABLED=false; cached briefly so a
+// dashboard refresh doesn't hammer the upstream.
+const quotaEnabled = String(process.env.SUBSCRIPTION_QUOTA_ENABLED ?? 'true').toLowerCase() !== 'false';
+const QUOTA_TTL_MS = 60_000;
+let quotaCache = { at: 0, data: null };
 
 const port = Number(process.env.PORT || 4173);
 const staticDir = existsSync(resolve(process.cwd(), 'dist'))
@@ -136,6 +145,10 @@ function handleApi(req, url, res) {
         ORDER BY event_time DESC
       `)
     });
+    return;
+  }
+  if (url.pathname === '/api/quota') {
+    handleQuota(res);
     return;
   }
   if (url.pathname === '/api/ingest' && req.method === 'POST') {
@@ -274,6 +287,25 @@ function envBool(name, fallback) {
 function envNumber(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : Number(fallback);
+}
+
+async function handleQuota(res) {
+  if (!quotaEnabled) {
+    sendJson(res, { disabled: true });
+    return;
+  }
+  const now = Date.now();
+  if (quotaCache.data && now - quotaCache.at < QUOTA_TTL_MS) {
+    sendJson(res, quotaCache.data);
+    return;
+  }
+  try {
+    const data = await queryQuota();
+    quotaCache = { at: now, data };
+    sendJson(res, data);
+  } catch (error) {
+    sendJson(res, { error: error.message }, 500);
+  }
 }
 
 async function handleIngest(req, res) {

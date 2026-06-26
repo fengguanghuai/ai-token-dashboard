@@ -20,6 +20,7 @@ function summarizeCollectOutput(stdout) {
 export function App() {
   const [M, setM] = useState(null);
   const [timeRows, setTimeRows] = useState(null);   // null until the precise view asks for it
+  const [quota, setQuota] = useState(null);         // live subscription-window quota
   const [loadError, setLoadError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [collecting, setCollecting] = useState(false);
@@ -82,6 +83,18 @@ export function App() {
   }, [loadTime]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ───── Live subscription-window quota (5h / 7d), refreshed periodically ─────
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => fetch('/api/quota')
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setQuota(d); })
+      .catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   const syncCollectStatus = useCallback((options = {}) => {
     return fetch('/api/collect/status')
@@ -183,6 +196,7 @@ export function App() {
       refreshing={refreshing}
       collecting={collecting}
       collectStatus={collectStatus}
+      quota={quota}
       onRefresh={loadData}
       onCollect={runCollect}
       onNeedTime={ensureTime} />
@@ -192,7 +206,7 @@ export function App() {
 /* =============================================================
    Dashboard (extracted so App stays clean)
    ============================================================= */
-function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onCollect, onNeedTime }) {
+function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh, onCollect, onNeedTime }) {
   // ───── Filter state ─────
   const [filters, setFilters] = useState(() => ({
     rangeId: '30d',
@@ -351,6 +365,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, onRefresh, onColl
     <div className="app">
       <Topbar
         lastSync={lastSync}
+        quota={quota}
         onRefresh={onRefresh}
         refreshing={refreshing}
         onCollect={onCollect}
