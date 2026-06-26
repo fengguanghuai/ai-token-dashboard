@@ -223,6 +223,27 @@ npm run pricing:update
 - `POST /api/collect` 仅允许从本机触发，避免远程页面随意扫描你的本地日志。
 - 不要将 `data/usage.sqlite`、`.env` 或任何采集导出文件提交到 Git。
 
+### 订阅额度与账号信息
+
+顶栏的订阅窗口进度条（`SUBSCRIPTION_QUOTA_ENABLED`，默认开启）是**唯一会主动联网**的功能。它读取本机上官方 CLI 自己保存的登录态，去查厂商自家的用量接口，并在卡片上标出当前登录的账号。逻辑全部在 `src/quota.mjs`，数据来源固定为以下本地文件（均支持官方环境变量覆盖路径）：
+
+| 信息 | 读取位置 |
+|------|----------|
+| Claude 登录 token | macOS 钥匙串 `Claude Code-credentials`；读不到时回退 `~/.claude/.credentials.json`（`CLAUDE_CONFIG_DIR` 可覆盖目录） |
+| Claude 套餐 / 登录过期时间 | 同上凭据中的 `subscriptionType` / `expiresAt` |
+| Claude 邮箱 / 名称 | `~/.claude.json` 的 `oauthAccount` 字段 |
+| Codex 登录 token | `~/.codex/auth.json`（`CODEX_HOME` 可覆盖目录） |
+| Codex 邮箱 / 名称 / 套餐 | 上述文件中 `id_token`（JWT）解析得到 |
+
+数据流约束：
+
+- **出站请求白名单**：仅 `api.anthropic.com/api/oauth/usage`（Claude）和 `chatgpt.com/backend-api/wham/usage`（Codex）两个厂商接口。每个 token 只发给它本来的厂商，与官方 CLI 的去向一致，不经任何第三方。
+- **邮箱在服务端脱敏**后才下发前端（如 `some***@example.com`），原始地址不出服务端。
+- **token、account_id 等敏感字段绝不下发前端**，仅在服务端用于发起上述请求。
+- 账号与额度信息属于**实时状态**，从不写入 SQLite、不写日志、不落任何文件。
+- 代码中**不含任何账号字面量**（邮箱 / token / ID 均为运行时从本地文件读取，内存内使用后即弃）。
+- 设 `SUBSCRIPTION_QUOTA_ENABLED=false` 可彻底关闭该功能，届时不发起任何出站请求，卡片也不显示。
+
 ---
 
 ## 项目结构
