@@ -19,25 +19,42 @@ function quotaResetText(iso) {
   if (!iso) return '';
   const ms = new Date(iso).getTime() - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return '即将重置';
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return h > 0 ? `${h}h${m}m 后重置` : `${m}m 后重置`;
+  const totalMin = Math.floor(ms / 60000);
+  const d = Math.floor(totalMin / 1440);
+  const h = Math.floor((totalMin % 1440) / 60);
+  const m = totalMin % 60;
+  if (d > 0) return `${d}d${h}h 后重置`;
+  if (h > 0) return `${h}h${m}m 后重置`;
+  return `${m}m 后重置`;
 }
 
-function QuotaItem({ tool, window }) {
+const QUOTA_WINDOW_ORDER = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'];
+
+function QuotaWindowRow({ window }) {
   const pct = Math.round((window.utilization || 0) * 100);
   const tone = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'ok';
   return (
-    <div className="quota-item" title={`${tool} · ${QUOTA_WINDOW_LABEL[window.name] || window.name} 窗口`}>
-      <div className="quota-head">
-        <span className="quota-tool">{tool}</span>
+    <div className="quota-row">
+      <div className="quota-row-head">
         <span className="quota-win">{QUOTA_WINDOW_LABEL[window.name] || window.name}</span>
+        <span className="quota-reset">{quotaResetText(window.resetsAt)}</span>
         <span className="quota-pct">{pct}%</span>
       </div>
       <div className="quota-track">
         <div className={`quota-fill quota-${tone}`} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
-      <div className="quota-reset">{quotaResetText(window.resetsAt)}</div>
+    </div>
+  );
+}
+
+function QuotaItem({ tool, windows }) {
+  const ordered = [...windows].sort(
+    (a, b) => QUOTA_WINDOW_ORDER.indexOf(a.name) - QUOTA_WINDOW_ORDER.indexOf(b.name)
+  ).slice(0, 2);
+  return (
+    <div className="quota-item">
+      <div className="quota-tool">{tool}</div>
+      {ordered.map(w => <QuotaWindowRow key={w.name} window={w} />)}
     </div>
   );
 }
@@ -48,8 +65,7 @@ function QuotaBars({ quota }) {
   for (const [key, label] of [['claude', 'Claude'], ['codex', 'Codex']]) {
     const q = quota[key];
     if (!q || !q.ok || !q.windows || !q.windows.length) continue;
-    const win = q.windows.find(w => w.name === 'five_hour') || q.windows[0];
-    items.push(<QuotaItem key={key} tool={label} window={win} />);
+    items.push(<QuotaItem key={key} tool={label} windows={q.windows} />);
   }
   if (!items.length) return null;
   return <div className="quota-bars">{items}</div>;
