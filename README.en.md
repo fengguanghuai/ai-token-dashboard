@@ -21,7 +21,7 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 
 ## Features
 
-- **Multi-source collection** — Claude Code, Codex CLI, Gemini CLI, Hermes Agent, OpenClaw
+- **Multi-source collection** — Claude Code, Codex CLI, OpenCode, Gemini CLI, Hermes Agent, OpenClaw
 - **Two views** — interactive usage dashboard (`/`) and a printable retrospective page (`/review`)
 - **Cost tracking** — per-model cost estimation via bundled LiteLLM + OpenRouter pricing caches
 - **In-app collection** — trigger a local collection run from the dashboard's top-right **Collect** button (loopback only)
@@ -37,6 +37,7 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 |------|--------------|
 | [Claude Code](https://claude.ai/code) | `~/.claude/projects/` |
 | [Codex CLI](https://github.com/openai/codex) | `~/.codex/sessions/` |
+| [OpenCode](https://github.com/sst/opencode) | `~/.local/share/opencode/` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/tmp/` |
 | Hermes Agent | `~/.hermes/state.db` (or `$HERMES_HOME/state.db`) |
 | OpenClaw | `~/.openclaw/agents/` |
@@ -255,9 +256,11 @@ src/
 ├── db.mjs               # SQLite schema and upsert helpers
 ├── pricing.mjs          # LiteLLM + OpenRouter pricing lookup and cost estimation
 ├── update-pricing.mjs   # Refresh local pricing caches
+├── collector-config.mjs # Reads config/collectors.json and expands paths
 ├── collectors/          # Per-tool data collectors
 │   ├── claude-code.mjs
 │   ├── codex.mjs
+│   ├── opencode.mjs
 │   ├── gemini.mjs
 │   ├── hermes.mjs
 │   ├── openclaw.mjs
