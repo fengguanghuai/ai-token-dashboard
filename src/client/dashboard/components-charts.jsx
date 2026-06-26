@@ -6,7 +6,6 @@ import { Fragment, useEffect, useMemo, useRef } from 'react';
 import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
 import { Delta } from './components-top.jsx';
-import { sourceIcon } from './source-icons.js';
 
 // ───────────────────────────────────────────────────────────────
 // ECharts wrapper
@@ -410,9 +409,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
             <div key={d.name}
               className={`legend-item ${focused && focused !== d.name ? 'dim' : ''}`}
               onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
-              {sourceIcon(d.name)
-                ? <img className="legend-icon" src={sourceIcon(d.name)} alt="" />
-                : <span className="legend-swatch" style={{background: d.color}}/>}
+              <span className="legend-swatch" style={{background: d.color}}/>
               <span className="legend-name" title={d.name}>{d.name}</span>
               <span className="legend-val">{U.compactCN(d.value)}</span>
               <span className="legend-pct">{sum ? ((d.value / sum) * 100).toFixed(1) : 0}%</span>
@@ -458,9 +455,7 @@ function TopModels({ rows, onDrillModel }) {
               <div className="model">{m.model}</div>
               <div className="meta">
                 <span className="tag">
-                  {sourceIcon(m.source)
-                    ? <img className="tag-icon" src={sourceIcon(m.source)} alt="" />
-                    : <span className="tag-dot" style={{background: U.getSourceColor(m.source)}}/>}
+                  <span className="tag-dot" style={{background: U.getSourceColor(m.source)}}/>
                   {m.source}
                 </span>
                 <span>{m.count} 条记录</span>

@@ -192,6 +192,12 @@ button, input, select { font-family: inherit; color: inherit; }
   flex-shrink: 0;
 }
 
+.quota-error {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 7px 0 3px;
+}
+
 .quota-row + .quota-row { margin-top: 5px; }
 
 .quota-row-head {

@@ -12,8 +12,9 @@ import { queryQuota } from './quota.mjs';
 // locally). Opt-out with SUBSCRIPTION_QUOTA_ENABLED=false; cached briefly so a
 // dashboard refresh doesn't hammer the upstream.
 const quotaEnabled = String(process.env.SUBSCRIPTION_QUOTA_ENABLED ?? 'true').toLowerCase() !== 'false';
-const QUOTA_TTL_MS = 60_000;
-let quotaCache = { at: 0, data: null };
+const QUOTA_TTL_MS = 60_000;       // cache a good result this long
+const QUOTA_ERROR_TTL_MS = 10_000; // but recover quickly after a transient error
+let quotaCache = { until: 0, data: null };
 
 const port = Number(process.env.PORT || 4173);
 const staticDir = existsSync(resolve(process.cwd(), 'dist'))
@@ -295,13 +296,17 @@ async function handleQuota(res) {
     return;
   }
   const now = Date.now();
-  if (quotaCache.data && now - quotaCache.at < QUOTA_TTL_MS) {
+  if (quotaCache.data && now < quotaCache.until) {
     sendJson(res, quotaCache.data);
     return;
   }
   try {
     const data = await queryQuota();
-    quotaCache = { at: now, data };
+    const failed = ['claude', 'codex'].some(k => {
+      const q = data[k];
+      return q && !q.ok && q.status !== 'no_credentials';
+    });
+    quotaCache = { until: now + (failed ? QUOTA_ERROR_TTL_MS : QUOTA_TTL_MS), data };
     sendJson(res, data);
   } catch (error) {
     sendJson(res, { error: error.message }, 500);

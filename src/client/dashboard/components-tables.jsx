@@ -4,6 +4,20 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { U } from '../shared/utils.js';
+import { sourceIcon, sourceIconScale } from './source-icons.js';
+
+// Source cell: brand icon when available, otherwise the colored dot.
+function SourceTag({ source }) {
+  const icon = sourceIcon(source);
+  return (
+    <span className="tag">
+      {icon
+        ? <img className="tag-icon" src={icon} alt="" style={{ transform: `scale(${sourceIconScale(source)})` }} />
+        : <span className="tag-dot" style={{ background: U.getSourceColor(source) }}/>}
+      {source}
+    </span>
+  );
+}
 
 // Generic data table
 function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, selectedKey, getKey, height, emptyText }) {
@@ -144,7 +158,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
   // Columns per tab
   const sourceColumns = [
     { field: 'source', title: '来源', render: r => (
-      <span className="tag"><span className="tag-dot" style={{background: U.getSourceColor(r.source)}}/>{r.source}</span>
+      <SourceTag source={r.source} />
     )},
     { field: 'device', title: '设备', render: r => <span className="muted" style={{fontSize:11.5}}>{r.device}</span> },
     { field: 'modelCount', title: '模型', hozAlign: 'right', render: r => r.modelCount, width: 70 },
@@ -173,7 +187,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
 
   const modelColumns = [
     { field: 'source', title: '来源', render: r => (
-      <span className="tag"><span className="tag-dot" style={{background: U.getSourceColor(r.source)}}/>{r.source}</span>
+      <SourceTag source={r.source} />
     )},
     { field: 'model', title: '模型', render: r => <span className="mono">{r.model}</span> },
     { field: 'dayCount', title: '活跃天', hozAlign: 'right', render: r => r.dayCount, width: 80 },
@@ -190,7 +204,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
 
   const sessionColumns = [
     { field: 'source', title: '来源', render: r => (
-      <span className="tag"><span className="tag-dot" style={{background: U.getSourceColor(r.source)}}/>{r.source}</span>
+      <SourceTag source={r.source} />
     ), width: 130 },
     { field: 'projectPath', title: '项目', render: r => {
       const label = r.projectPath && r.projectPath !== 'Unknown Project'
@@ -216,7 +230,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
       <span className="mono" style={{fontSize: 11.5, color: 'var(--text-2)', whiteSpace: 'nowrap'}}>{formatRunTime(r)}</span>
     ), value: formatRunTime, width: 160 },
     { field: 'source', title: '来源', render: r => (
-      <span className="tag"><span className="tag-dot" style={{background: U.getSourceColor(r.source)}}/>{r.source}</span>
+      <SourceTag source={r.source} />
     ), width: 140 },
     { field: 'device', title: '设备', render: r => <span className="muted">{r.device}</span>, width: 200 },
     { field: 'status', title: '状态', render: r => (

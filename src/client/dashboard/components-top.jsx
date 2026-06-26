@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { U } from '../shared/utils.js';
 import claudeIcon from './icons/claude.svg';
 import gptIcon from './icons/gpt.svg';
-import { sourceIcon } from './source-icons.js';
+import { sourceIcon, sourceIconScale } from './source-icons.js';
 
 const QUOTA_TOOL_ICON = { Claude: claudeIcon, Codex: gptIcon };
 
@@ -52,8 +52,8 @@ function QuotaWindowRow({ window }) {
   );
 }
 
-function QuotaItem({ tool, windows }) {
-  const ordered = [...windows].sort(
+function QuotaItem({ tool, windows, error }) {
+  const ordered = (windows || []).slice().sort(
     (a, b) => QUOTA_WINDOW_ORDER.indexOf(a.name) - QUOTA_WINDOW_ORDER.indexOf(b.name)
   ).slice(0, 2);
   return (
@@ -62,7 +62,9 @@ function QuotaItem({ tool, windows }) {
         {QUOTA_TOOL_ICON[tool] && <img className="quota-logo" src={QUOTA_TOOL_ICON[tool]} alt="" />}
         {tool}
       </div>
-      {ordered.map(w => <QuotaWindowRow key={w.name} window={w} />)}
+      {error
+        ? <div className="quota-error">{error}</div>
+        : ordered.map(w => <QuotaWindowRow key={w.name} window={w} />)}
     </div>
   );
 }
@@ -72,8 +74,13 @@ function QuotaBars({ quota }) {
   const items = [];
   for (const [key, label] of [['claude', 'Claude'], ['codex', 'Codex']]) {
     const q = quota[key];
-    if (!q || !q.ok || !q.windows || !q.windows.length) continue;
-    items.push(<QuotaItem key={key} tool={label} windows={q.windows} />);
+    if (!q) continue;
+    if (q.ok && q.windows && q.windows.length) {
+      items.push(<QuotaItem key={key} tool={label} windows={q.windows} />);
+    } else if (q.status && q.status !== 'no_credentials') {
+      // Keep the card visible on a transient/expired error instead of vanishing.
+      items.push(<QuotaItem key={key} tool={label} error={q.status === 'expired' ? '登录已过期' : '暂时获取不到'} />);
+    }
   }
   if (!items.length) return null;
   return <div className="quota-bars">{items}</div>;
@@ -228,7 +235,7 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
               style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
               onClick={() => toggleSet('sources', s)}>
               {sourceIcon(s)
-                ? <img className="pill-icon" src={sourceIcon(s)} alt="" />
+                ? <img className="pill-icon" src={sourceIcon(s)} alt="" style={{ transform: `scale(${sourceIconScale(s)})` }} />
                 : <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>}
               {s}
             </button>

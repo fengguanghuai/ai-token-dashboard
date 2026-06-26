@@ -15,8 +15,21 @@ const SOURCE_ICON = {
   'OpenClaw': openclaw
 };
 
+// Some icons have a lot of internal padding / a non-square viewBox and read
+// visually smaller; nudge them up so all the logos look the same weight.
+const SOURCE_ICON_SCALE = { OpenClaw: 1.4 };
+
+function normalizeSource(source) {
+  return String(source || '').replace(/\s*\(JS\)$/, '');
+}
+
 /** Resolve a source label (tolerating a "(JS)" suffix) to its brand icon URL. */
 export function sourceIcon(source) {
   if (!source) return null;
-  return SOURCE_ICON[source] || SOURCE_ICON[String(source).replace(/\s*\(JS\)$/, '')] || null;
+  return SOURCE_ICON[source] || SOURCE_ICON[normalizeSource(source)] || null;
+}
+
+/** Per-source visual scale so logos read at a consistent size. */
+export function sourceIconScale(source) {
+  return SOURCE_ICON_SCALE[source] || SOURCE_ICON_SCALE[normalizeSource(source)] || 1;
 }
