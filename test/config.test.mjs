@@ -7,10 +7,10 @@ test('expandPath expands ~ and environment variables', () => {
   assert.equal(expandPath('~'), homedir());
   assert.equal(expandPath('~/logs'), `${homedir()}/logs`);
 
-  process.env.TOKSCALE_TEST_DIR = '/tmp/example';
-  assert.equal(expandPath('${TOKSCALE_TEST_DIR}/sub'), '/tmp/example/sub');
-  assert.equal(expandPath('$TOKSCALE_TEST_DIR/sub'), '/tmp/example/sub');
-  delete process.env.TOKSCALE_TEST_DIR;
+  process.env.EXPAND_TEST_DIR = '/tmp/example';
+  assert.equal(expandPath('${EXPAND_TEST_DIR}/sub'), '/tmp/example/sub');
+  assert.equal(expandPath('$EXPAND_TEST_DIR/sub'), '/tmp/example/sub');
+  delete process.env.EXPAND_TEST_DIR;
 });
 
 test('expandPath returns null for empty/invalid input', () => {
