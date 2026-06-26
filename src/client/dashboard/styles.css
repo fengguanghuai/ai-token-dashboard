@@ -683,6 +683,10 @@ button, input, select { font-family: inherit; color: inherit; }
   width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.7;
 }
 
+.pill-icon {
+  width: 14px; height: 14px; object-fit: contain; flex-shrink: 0; border-radius: 3px;
+}
+
 .select-wrap {
   position: relative;
   display: inline-flex;
@@ -978,6 +982,7 @@ button, input, select { font-family: inherit; color: inherit; }
 .legend-item:hover { background: var(--surface-2); }
 .legend-item.dim { opacity: 0.4; }
 .legend-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; margin-top: 4px; }
+.legend-icon { width: 15px; height: 15px; object-fit: contain; flex-shrink: 0; margin-top: 1px; border-radius: 3px; }
 .legend-name {
   grid-column: 2;
   min-width: 0;
@@ -1202,6 +1207,7 @@ table.dt tbody tr.selected { background: oklch(0.97 0.02 265); }
   color: var(--text-2);
 }
 .tag-dot { width: 6px; height: 6px; border-radius: 50%; }
+.tag-icon { width: 12px; height: 12px; object-fit: contain; flex-shrink: 0; }
 .mono { font-family: var(--font-mono); font-size: 11.5px; }
 
 .share-bar {

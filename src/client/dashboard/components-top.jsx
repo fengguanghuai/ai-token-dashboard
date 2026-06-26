@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { U } from '../shared/utils.js';
 import claudeIcon from './icons/claude.svg';
 import gptIcon from './icons/gpt.svg';
+import { sourceIcon } from './source-icons.js';
 
 const QUOTA_TOOL_ICON = { Claude: claudeIcon, Codex: gptIcon };
 
@@ -226,7 +227,9 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
               className={`pill ${f.sources.has(s) ? 'active' : ''}`}
               style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
               onClick={() => toggleSet('sources', s)}>
-              <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>
+              {sourceIcon(s)
+                ? <img className="pill-icon" src={sourceIcon(s)} alt="" />
+                : <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>}
               {s}
             </button>
           ))}
