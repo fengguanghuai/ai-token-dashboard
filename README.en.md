@@ -184,6 +184,9 @@ Notes:
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | Scheduled collection interval in seconds, minimum 10 seconds |
 | `SCHEDULED_COLLECT_RUN_ON_START` | `false` | Run one collection shortly after server startup |
 | `COLLECT_DEVICE` | hostname | Device label stored with scheduled collection records |
+| `COLLECTION_RUNS_KEEP` | `500` | Keep only the newest N collection-run records; older ones are pruned whenever the database is opened |
+| `PARSE_CACHE` | `1` | Incremental parse cache. When enabled, unchanged session files are skipped by file fingerprint (mtime + size); set to `0` to disable |
+| `SUBSCRIPTION_QUOTA_ENABLED` | `true` | The subscription-window bars in the top bar (Claude/Codex 5-hour / 7-day utilization). **This is the only feature that makes network calls**: it uses the OAuth credentials already stored on your machine to call the vendors' own usage endpoints. Set to `false` to disable |
 
 ### Pricing Caches
 
@@ -218,6 +221,27 @@ CLI flags for `npm run collect`:
 - When `INGEST_TOKEN` is set, the `/api/ingest` endpoint requires a Bearer token.
 - `POST /api/collect` only accepts loopback requests, so remote pages cannot trigger local log scans.
 - Do not commit `data/usage.sqlite`, `.env`, or any exported data files.
+
+### Subscription Quota & Account Info
+
+The subscription-window bars in the top bar (`SUBSCRIPTION_QUOTA_ENABLED`, on by default) are the **only feature that actively goes online**. They read the login state that the official CLIs already store on your machine, query the vendors' own usage endpoints, and label each card with the currently signed-in account. All of this lives in `src/quota.mjs`; the data sources are fixed local files (each path overridable via the official environment variables):
+
+| Information | Source |
+|-------------|--------|
+| Claude login token | macOS Keychain `Claude Code-credentials`; falls back to `~/.claude/.credentials.json` (directory overridable via `CLAUDE_CONFIG_DIR`) |
+| Claude plan / login expiry | `subscriptionType` / `expiresAt` in the same credentials |
+| Claude email / name | The `oauthAccount` field in `~/.claude.json` |
+| Codex login token | `~/.codex/auth.json` (directory overridable via `CODEX_HOME`) |
+| Codex email / name / plan | Parsed from the `id_token` (JWT) in that file |
+
+Data-flow guarantees:
+
+- **Outbound allowlist**: only `api.anthropic.com/api/oauth/usage` (Claude) and `chatgpt.com/backend-api/wham/usage` (Codex). Each token is sent only to its own vendor — the same destination the official CLIs use — never to any third party.
+- **Emails are masked server-side** before reaching the client (e.g. `some***@example.com`); the raw address never leaves the server.
+- **Tokens, account IDs, and other sensitive fields are never sent to the client** — they are only used server-side to make the requests above.
+- Account and quota data are **live state**: never written to SQLite, never logged, never persisted to any file.
+- The code contains **no account literals** — emails / tokens / IDs are all read from local files at runtime, used in memory, and discarded.
+- Set `SUBSCRIPTION_QUOTA_ENABLED=false` to disable the feature entirely; no outbound requests are made and the cards are hidden.
 
 ---
 
