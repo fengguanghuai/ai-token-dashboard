@@ -365,7 +365,6 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
     <div className="app">
       <Topbar
         lastSync={lastSync}
-        quota={quota}
         onRefresh={onRefresh}
         refreshing={refreshing}
         onCollect={onCollect}
@@ -379,7 +378,8 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         allDevices={allDevices}
         allModels={allModels}
         availableRange={availableRange}
-        onExport={onExportAll} />
+        onExport={onExportAll}
+        quota={quota} />
 
       {focusedSource && (
         <div style={{

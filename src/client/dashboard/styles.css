@@ -325,8 +325,24 @@ button, input, select { font-family: inherit; color: inherit; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+}
+
+.filterbar-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.filterbar .quota-bars {
+  flex: 0 0 auto;
+  align-self: center;
+  padding-left: 16px;
+  border-left: 1px solid var(--border-2);
 }
 
 .filter-row {

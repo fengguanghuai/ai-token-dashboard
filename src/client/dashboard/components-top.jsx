@@ -74,7 +74,7 @@ function QuotaBars({ quota }) {
 // ───────────────────────────────────────────────────────────────
 // Topbar
 // ───────────────────────────────────────────────────────────────
-function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus, quota }) {
+function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus }) {
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -90,7 +90,6 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
           <a href="/review" className="page-chip">复盘</a>
         </div>
       </div>
-      <QuotaBars quota={quota} />
       <div className="topbar-right">
         {collectStatus && (
           <div className={`collect-pill collect-${collectStatus.type}`} title={collectStatus.message}>
@@ -131,7 +130,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport }) {
+function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport, quota }) {
   const RANGES = [
     { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
@@ -188,6 +187,7 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
 
   return (
     <div className="filterbar">
+      <div className="filterbar-main">
       <div className="filter-row filter-row-primary">
         <div className="filter-group">
           <span className="filter-label">时间</span>
@@ -264,6 +264,8 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
           导出
         </button>
       </div>
+      </div>
+      <QuotaBars quota={quota} />
     </div>
   );
 }
