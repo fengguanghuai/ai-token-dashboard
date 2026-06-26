@@ -4,6 +4,10 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { U } from '../shared/utils.js';
+import claudeIcon from './icons/claude.svg';
+import gptIcon from './icons/gpt.svg';
+
+const QUOTA_TOOL_ICON = { Claude: claudeIcon, Codex: gptIcon };
 
 // ───────────────────────────────────────────────────────────────
 // Subscription-window quota bars (live, from /api/quota)
@@ -53,7 +57,10 @@ function QuotaItem({ tool, windows }) {
   ).slice(0, 2);
   return (
     <div className="quota-item">
-      <div className="quota-tool">{tool}</div>
+      <div className="quota-tool">
+        {QUOTA_TOOL_ICON[tool] && <img className="quota-logo" src={QUOTA_TOOL_ICON[tool]} alt="" />}
+        {tool}
+      </div>
       {ordered.map(w => <QuotaWindowRow key={w.name} window={w} />)}
     </div>
   );

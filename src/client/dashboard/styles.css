@@ -176,10 +176,20 @@ button, input, select { font-family: inherit; color: inherit; }
 }
 
 .quota-tool {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 4px;
+}
+
+.quota-logo {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .quota-row + .quota-row { margin-top: 5px; }
