@@ -23,11 +23,23 @@ function ToolsSection({ daily, totalTokens }) {
   const donutRef = useRef(null);
   const donutChart = useRef(null);
 
+  // Init once + dispose on unmount (mirrors the dashboard's chart wrapper so the
+  // instance isn't leaked when this section unmounts).
   useEffect(() => {
     if (!donutRef.current) return;
-    if (!donutChart.current) {
-      donutChart.current = echarts.init(donutRef.current, null, { renderer: 'canvas' });
-    }
+    donutChart.current = echarts.init(donutRef.current, null, { renderer: 'canvas' });
+    const onResize = () => donutChart.current?.resize();
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      donutChart.current?.dispose();
+      donutChart.current = null;
+    };
+  }, []);
+
+  // Repaint when the data changes.
+  useEffect(() => {
+    if (!donutChart.current) return;
     donutChart.current.setOption({
       backgroundColor: 'transparent',
       animation: true,
@@ -44,10 +56,12 @@ function ToolsSection({ daily, totalTokens }) {
         type: 'pie',
         radius: ['60%', '92%'],
         center: ['50%', '50%'],
+        minAngle: 2,
         avoidLabelOverlap: true,
         label: { show: false },
         labelLine: { show: false },
         itemStyle: { borderColor: 'oklch(0.97 0.008 80)', borderWidth: 4 },
+        emphasis: { scale: true, scaleSize: 6 },
         data: tools.map(t => ({
           name: t.key,
           value: t.totalTokens,
@@ -55,9 +69,6 @@ function ToolsSection({ daily, totalTokens }) {
         }))
       }]
     }, true);
-    const onResize = () => donutChart.current?.resize();
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, [tools]);
 
   if (!tools.length) return null;
