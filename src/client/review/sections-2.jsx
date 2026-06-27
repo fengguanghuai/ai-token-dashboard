@@ -54,14 +54,30 @@ function ToolsSection({ daily, totalTokens }) {
       },
       series: [{
         type: 'pie',
-        radius: ['60%', '92%'],
+        // Match the stats-page donut: thicker ring, rounded segments lifted with
+        // a soft drop shadow, and the same hover scale + repaint easing.
+        radius: ['48%', '78%'],
         center: ['50%', '50%'],
         minAngle: 2,
         avoidLabelOverlap: true,
+        animationDurationUpdate: 220,
+        animationEasingUpdate: 'cubicOut',
+        stateAnimation: { duration: 140, easing: 'cubicOut' },
         label: { show: false },
         labelLine: { show: false },
-        itemStyle: { borderColor: 'oklch(0.97 0.008 80)', borderWidth: 4 },
-        emphasis: { scale: true, scaleSize: 6 },
+        itemStyle: {
+          borderRadius: 8,
+          borderColor: 'oklch(0.97 0.008 80)',
+          borderWidth: 2,
+          shadowBlur: 12,
+          shadowOffsetY: 3,
+          shadowColor: 'rgba(15, 23, 42, 0.16)'
+        },
+        emphasis: {
+          scale: true,
+          scaleSize: 3,
+          itemStyle: { shadowBlur: 12, shadowOffsetY: 3, shadowColor: 'rgba(15, 23, 42, 0.16)' }
+        },
         data: tools.map(t => ({
           name: t.key,
           value: t.totalTokens,
