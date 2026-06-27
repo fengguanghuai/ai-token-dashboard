@@ -5,37 +5,8 @@
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
+import { EChart } from '../shared/echart.jsx';
 import { Delta } from './components-top.jsx';
-
-// ───────────────────────────────────────────────────────────────
-// ECharts wrapper
-// ───────────────────────────────────────────────────────────────
-function EChart({ option, height = 320, onEvents }) {
-  const ref = useRef(null);
-  const chartRef = useRef(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    chartRef.current = echarts.init(ref.current, null, { renderer: 'canvas' });
-    const onResize = () => chartRef.current?.resize();
-    window.addEventListener('resize', onResize);
-    if (onEvents) {
-      for (const [name, handler] of Object.entries(onEvents)) {
-        chartRef.current.on(name, handler);
-      }
-    }
-    return () => {
-      window.removeEventListener('resize', onResize);
-      chartRef.current?.dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (chartRef.current) chartRef.current.setOption(option, true);
-  }, [option]);
-
-  return <div ref={ref} style={{ width: '100%', height }} />;
-}
 
 // ───────────────────────────────────────────────────────────────
 // Trend chart — switchable bar/line/stacked + optional comparison

@@ -2,9 +2,9 @@
    Review-page sections — Tools, Efficiency, Insights
    ============================================================= */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as echarts from 'echarts';
+import { useMemo, useState } from 'react';
 import { U } from '../shared/utils.js';
+import { EChart } from '../shared/echart.jsx';
 import { RU } from './utils.js';
 
 // ───────────────────────────────────────────────────────────────
@@ -20,77 +20,67 @@ function ToolsSection({ daily, totalTokens }) {
     }));
   }, [daily, totalTokens]);
 
-  const donutRef = useRef(null);
-  const donutChart = useRef(null);
-
-  // Init once + dispose on unmount (mirrors the dashboard's chart wrapper so the
-  // instance isn't leaked when this section unmounts).
-  useEffect(() => {
-    if (!donutRef.current) return;
-    donutChart.current = echarts.init(donutRef.current, null, { renderer: 'canvas' });
-    const onResize = () => donutChart.current?.resize();
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      donutChart.current?.dispose();
-      donutChart.current = null;
-    };
-  }, []);
-
-  // Repaint when the data changes.
-  useEffect(() => {
-    if (!donutChart.current) return;
-    donutChart.current.setOption({
-      backgroundColor: 'transparent',
-      animation: true,
-      tooltip: {
-        trigger: 'item',
-        appendToBody: true,
-        confine: true,
-        transitionDuration: 0,
-        backgroundColor: 'oklch(0.16 0.010 60)',
-        borderColor: 'transparent',
-        textStyle: { color: 'oklch(0.97 0.008 80)', fontSize: 12 },
-        // pointer-events:none keeps the bubble from sitting under the cursor and
-        // bouncing the hover (mouseout/mouseover) → the flicker on mouse-enter.
-        extraCssText: 'pointer-events:none;border-radius:8px;box-shadow:0 8px 24px -8px rgb(0 0 0 / 0.3);',
-        formatter: p => `<div style="font-weight:600">${p.name}</div>
-          <div style="font-size:13px;margin-top:4px;font-feature-settings:'tnum'">${U.compactCN(p.value)} tokens · ${(p.percent || 0).toFixed(1)}%</div>`
+  // Same chart config the stats-page donut uses (style + hover events), so the
+  // two pages behave identically — rendered through the shared EChart wrapper.
+  const donutOption = useMemo(() => ({
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'item',
+      appendToBody: true,
+      confine: true,
+      transitionDuration: 0,
+      backgroundColor: '#fff',
+      borderColor: 'oklch(0.92 0.004 80)',
+      borderWidth: 1,
+      textStyle: { color: 'oklch(0.18 0.005 80)', fontSize: 12 },
+      extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
+      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>
+        <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
+        <div style="font-size:11px;color:oklch(0.55 0.005 80)">${(p.percent || 0).toFixed(1)}%</div>`
+    },
+    series: [{
+      type: 'pie',
+      animationDurationUpdate: 220,
+      animationEasingUpdate: 'cubicOut',
+      stateAnimation: { duration: 140, easing: 'cubicOut' },
+      radius: ['48%', '78%'],
+      center: ['50%', '50%'],
+      minAngle: 2,
+      avoidLabelOverlap: true,
+      label: { show: false },
+      labelLine: { show: false },
+      itemStyle: {
+        borderRadius: 8,
+        borderColor: '#fff',
+        borderWidth: 2,
+        shadowBlur: 12,
+        shadowOffsetY: 3,
+        shadowColor: 'rgba(15, 23, 42, 0.16)'
       },
-      series: [{
-        type: 'pie',
-        // Match the stats-page donut: thicker ring, rounded segments lifted with
-        // a soft drop shadow, and the same hover scale + repaint easing.
-        radius: ['48%', '78%'],
-        center: ['50%', '50%'],
-        minAngle: 2,
-        avoidLabelOverlap: true,
-        animationDurationUpdate: 220,
-        animationEasingUpdate: 'cubicOut',
-        stateAnimation: { duration: 140, easing: 'cubicOut' },
-        label: { show: false },
-        labelLine: { show: false },
-        itemStyle: {
-          borderRadius: 8,
-          borderColor: 'oklch(0.97 0.008 80)',
-          borderWidth: 2,
-          shadowBlur: 12,
-          shadowOffsetY: 3,
-          shadowColor: 'rgba(15, 23, 42, 0.16)'
-        },
+      emphasis: {
+        scale: true,
+        scaleSize: 3,
+        itemStyle: { shadowBlur: 12, shadowOffsetY: 3, shadowColor: 'rgba(15, 23, 42, 0.16)' }
+      },
+      blur: { itemStyle: { opacity: 1 } },
+      data: tools.map(t => ({
+        name: t.key,
+        value: t.totalTokens,
+        itemStyle: { color: U.getSourceColor(t.key) },
         emphasis: {
-          scale: true,
-          scaleSize: 3,
-          itemStyle: { shadowBlur: 12, shadowOffsetY: 3, shadowColor: 'rgba(15, 23, 42, 0.16)' }
-        },
-        data: tools.map(t => ({
-          name: t.key,
-          value: t.totalTokens,
-          itemStyle: { color: U.getSourceColor(t.key) }
-        }))
-      }]
-    }, true);
-  }, [tools]);
+          itemStyle: {
+            color: U.getSourceColor(t.key),
+            opacity: 1,
+            borderColor: '#fff',
+            borderWidth: 2,
+            shadowBlur: 12,
+            shadowOffsetY: 3,
+            shadowColor: 'rgba(15, 23, 42, 0.16)'
+          }
+        }
+      }))
+    }]
+  }), [tools]);
 
   if (!tools.length) return null;
   const top = tools[0];
@@ -104,7 +94,7 @@ function ToolsSection({ daily, totalTokens }) {
       <div className="tools-split">
         <div style={{display: 'flex', justifyContent: 'center'}}>
           <div className="donut-wrap">
-            <div ref={donutRef} style={{width: 280, height: 280}}/>
+            <EChart option={donutOption} height={280}/>
             <div className="donut-center">
               <div>
                 <div className="l">主导工具</div>
