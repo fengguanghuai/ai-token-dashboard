@@ -45,10 +45,15 @@ function ToolsSection({ daily, totalTokens }) {
       animation: true,
       tooltip: {
         trigger: 'item',
+        appendToBody: true,
+        confine: true,
+        transitionDuration: 0,
         backgroundColor: 'oklch(0.16 0.010 60)',
         borderColor: 'transparent',
         textStyle: { color: 'oklch(0.97 0.008 80)', fontSize: 12 },
-        extraCssText: 'border-radius: 8px; box-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.3);',
+        // pointer-events:none keeps the bubble from sitting under the cursor and
+        // bouncing the hover (mouseout/mouseover) → the flicker on mouse-enter.
+        extraCssText: 'pointer-events:none;border-radius:8px;box-shadow:0 8px 24px -8px rgb(0 0 0 / 0.3);',
         formatter: p => `<div style="font-weight:600">${p.name}</div>
           <div style="font-size:13px;margin-top:4px;font-feature-settings:'tnum'">${U.compactCN(p.value)} tokens · ${(p.percent || 0).toFixed(1)}%</div>`
       },
