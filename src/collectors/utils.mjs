@@ -91,3 +91,17 @@ export function inferProviderFromModel(model) {
   if (lower.includes('glm')) return 'zai';
   return null;
 }
+
+/**
+ * 计算统一 Token 总量。
+ *
+ * Codex 的 output 已包含 reasoning，reasoning 字段仅作为明细展示；
+ * 其他来源保持原有的独立 reasoning 计数语义。
+ *
+ * @author fengguanghuai-jwk
+ * @date 2026-07-10
+ */
+export function tokenTotal(tokens, client = null) {
+  const reasoning = client === 'codex' ? 0 : tokens.reasoning;
+  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite + reasoning;
+}

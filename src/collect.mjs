@@ -2,6 +2,7 @@ import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { deleteTimeUsageForSource, openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadPricing } from './pricing.mjs';
+import { tokenTotal } from './collectors/utils.mjs';
 
 const COLLECTORS = [
   { module: './collectors/claude-code.mjs', label: 'Claude Code' },
@@ -98,6 +99,7 @@ function normalizeTimeRows(json, deviceName) {
   const events = Array.isArray(json?.events) ? json.events : [];
   return events.map((entry, index) => {
     const tokens = normalizeTokens(entry.tokens);
+    const totalTokens = tokenTotal(tokens, entry.client);
     const eventTime = normalizeEventTime(entry.eventTime || entry.timestamp);
     const usageDate = entry.usageDate || entry.date || eventTime.slice(0, 10);
     const source = sourceLabel(entry.client);
@@ -110,7 +112,7 @@ function normalizeTimeRows(json, deviceName) {
         eventTime,
         entry.sessionId || entry.workspaceKey || '',
         model,
-        tokenTotal(tokens),
+        totalTokens,
         index
       ].join(':'),
       eventTime,
@@ -123,7 +125,7 @@ function normalizeTimeRows(json, deviceName) {
       cacheCreationTokens: tokens.cacheWrite,
       cacheReadTokens: tokens.cacheRead,
       reasoningOutputTokens: tokens.reasoning,
-      totalTokens: tokenTotal(tokens),
+      totalTokens,
       costUSD: entry.cost || 0
     };
   }).filter(row => row.eventTime && row.usageDate && row.totalTokens > 0);
@@ -169,7 +171,7 @@ function normalizeDailyRows(json, deviceName) {
         cacheCreationTokens: tokens.cacheWrite,
         cacheReadTokens: tokens.cacheRead,
         reasoningOutputTokens: tokens.reasoning,
-        totalTokens: tokenTotal(tokens),
+        totalTokens: tokenTotal(tokens, entry.client),
         costUSD: entry.cost || 0
       };
     });
@@ -200,7 +202,7 @@ function normalizeSessionRows(json, deviceName) {
       cacheCreationTokens: tokens.cacheWrite,
       cacheReadTokens: tokens.cacheRead,
       reasoningOutputTokens: tokens.reasoning,
-      totalTokens: tokenTotal(tokens),
+      totalTokens: tokenTotal(tokens, entry.client),
       costUSD: entry.cost || 0
     };
   });
@@ -214,10 +216,6 @@ function normalizeTokens(tokens = {}) {
     cacheWrite: positiveNumber(tokens.cacheWrite ?? tokens.cache_write),
     reasoning: positiveNumber(tokens.reasoning)
   };
-}
-
-function tokenTotal(tokens) {
-  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite + tokens.reasoning;
 }
 
 function positiveNumber(value) {

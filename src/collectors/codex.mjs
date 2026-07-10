@@ -46,7 +46,7 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
-const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
+const CACHE_VERSION = 2;   // bump when parseSessionFile behavior or output changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -176,7 +176,7 @@ function looksLikeStaleRegression(current, previous, last) {
  * Parse a single Codex JSONL session file.
  * Returns an array of { timestamp, date, model, workspace, tokens }.
  */
-async function parseSessionFile(filePath, sessionId) {
+export async function parseSessionFile(filePath, sessionId) {
   let text;
   try {
     text = await readFile(filePath, 'utf8');
@@ -188,6 +188,8 @@ async function parseSessionFile(filePath, sessionId) {
   let currentModel     = null;
   let previousTotal    = null;   // last seen total_token_usage summary
   let workspace        = null;
+  let replaySession    = false;
+  let replaySecond     = null;
 
   const events = [];
 
@@ -203,6 +205,9 @@ async function parseSessionFile(filePath, sessionId) {
     // ── session_meta ──────────────────────────────────────────────────
     if (type === 'session_meta') {
       const payload = entry.payload || {};
+      if (isReplaySession(payload)) {
+        replaySession = true;
+      }
       if (payload.cwd) {
         workspace = payload.cwd;
       }
@@ -235,6 +240,20 @@ async function parseSessionFile(filePath, sessionId) {
 
       const lastUsage  = info.last_token_usage  ? usageSummary(info.last_token_usage)  : null;
       const totalUsage = info.total_token_usage ? usageSummary(info.total_token_usage) : null;
+
+      // Fork 和子代理会把父会话历史复制到新文件，并把历史事件统一改写为
+      // 子会话创建时刻。跳过这一秒内的重放记录，但保留累计基线，避免
+      // 子会话自己的首条增量被误判为一次全新的累计序列。
+      const timestamp = typeof entry.timestamp === 'string' ? entry.timestamp : '';
+      if (replaySession) {
+        const eventSecond = timestampSecond(timestamp);
+        replaySecond ||= eventSecond;
+        if (eventSecond && eventSecond === replaySecond) {
+          if (totalUsage) previousTotal = totalUsage;
+          continue;
+        }
+        replaySession = false;
+      }
 
       // Dedup: skip if total hasn't changed since last event
       if (totalUsage && previousTotal && summaryEqual(totalUsage, previousTotal)) continue;
@@ -276,7 +295,6 @@ async function parseSessionFile(filePath, sessionId) {
       const tokens = summaryToTokens(increment);
 
       // Date from event timestamp
-      const timestamp = typeof entry.timestamp === 'string' ? entry.timestamp : '';
       let date = 'unknown';
       if (timestamp) {
         date = localDateFromTimestamp(timestamp);
@@ -287,6 +305,19 @@ async function parseSessionFile(filePath, sessionId) {
   }
 
   return events;
+}
+
+function isReplaySession(payload) {
+  return Boolean(
+    payload?.forked_from_id ||
+    payload?.source?.subagent?.thread_spawn ||
+    payload?.thread_source === 'subagent'
+  );
+}
+
+function timestampSecond(value) {
+  if (typeof value !== 'string' || value.length < 19) return null;
+  return value.slice(0, 19);
 }
 
 function extractModel(obj) {
