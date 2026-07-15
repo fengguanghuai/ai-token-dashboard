@@ -5,6 +5,7 @@
   "scripts": {
     "collect": "node src/collect.mjs",
     "pricing:update": "node src/update-pricing.mjs",
+    "pricing:backfill": "node src/backfill-pricing.mjs",
     "dev": "node src/dev.mjs",
     "dev:client": "vite --host 127.0.0.1 --port 5173",
     "dev:server": "node src/server.mjs",
