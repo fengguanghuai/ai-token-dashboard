@@ -1187,22 +1187,63 @@ button, input, select { font-family: inherit; color: inherit; }
 
 /* ─── Heatmap ────────────────────────────────────────────── */
 
-.heatmap {
-  width: 100%;
+.heatmap-layout {
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(460px, 1.25fr) minmax(300px, 0.75fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.heatmap-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.heatmap-grid {
+  position: relative;
+  display: grid;
+  width: max-content;
+  margin: 0 auto;
+  gap: 3px;
+  align-items: center;
+}
+.heatmap-scroll {
+  width: 100%;
+  overflow-x: auto;
+  padding: 42px 4px 8px;
+  margin-top: -34px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.heatmap-scroll::-webkit-scrollbar { height: 6px; }
+.heatmap-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
 }
 .heat-cell {
-  height: 22px;
-  border-radius: 3px;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--border), transparent 24%);
+  border-radius: 2.5px;
   cursor: pointer;
-  transition: transform 120ms ease, outline 120ms ease;
+  transition: transform 100ms ease, border-color 100ms ease, box-shadow 100ms ease;
 }
-.heat-cell:hover {
-  outline: 1.5px solid var(--text);
-  outline-offset: 1px;
+.heat-cell:hover,
+.heat-cell:focus-visible {
+  border-color: color-mix(in oklab, var(--text), transparent 25%);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px color-mix(in oklab, var(--text), transparent 35%);
+  outline: none;
+  transform: scale(1.12);
   z-index: 2;
 }
+.heat-level-0 { background: oklch(0.955 0.006 80); }
+.heat-level-1 { background: oklch(0.88 0.055 265); border-color: oklch(0.84 0.06 265); }
+.heat-level-2 { background: oklch(0.76 0.10 265); border-color: oklch(0.72 0.11 265); }
+.heat-level-3 { background: oklch(0.63 0.15 265); border-color: oklch(0.59 0.16 265); }
+.heat-level-4 { background: oklch(0.48 0.18 265); border-color: oklch(0.44 0.18 265); }
 .heat-row-label,
 .heat-col-label {
   font-size: 10.5px;
@@ -1215,10 +1256,201 @@ button, input, select { font-family: inherit; color: inherit; }
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--muted);
 }
-.heat-scale-bar {
-  display: inline-flex; height: 8px; width: 100px; border-radius: 2px; overflow: hidden;
+.heat-scale-cells {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
-.heat-scale-bar span { flex: 1; }
+.heat-scale-cells .heat-cell {
+  display: block;
+  width: 11px;
+  height: 11px;
+  min-width: 11px;
+  pointer-events: none;
+}
+.heat-tooltip {
+  position: absolute;
+  z-index: 10;
+  min-width: 158px;
+  padding: 9px 11px;
+  color: oklch(0.97 0.005 80);
+  background: oklch(0.20 0.012 265 / 0.96);
+  border: 1px solid oklch(0.34 0.02 265);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(20 18 30 / 0.20);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 9px));
+  text-align: left;
+  white-space: nowrap;
+}
+.heat-tooltip::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  border-right: 1px solid oklch(0.34 0.02 265);
+  border-bottom: 1px solid oklch(0.34 0.02 265);
+  transform: translateX(-50%) rotate(45deg);
+}
+.heat-tooltip strong,
+.heat-tooltip span,
+.heat-tooltip small { display: block; }
+.heat-tooltip strong {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.heat-tooltip span {
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.heat-tooltip small {
+  margin-top: 1px;
+  color: oklch(0.77 0.01 265);
+  font-size: 10.5px;
+}
+
+.heat-insights {
+  min-width: 0;
+  padding: 15px;
+  background: color-mix(in oklab, var(--surface-2), var(--surface) 42%);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+.heat-insights-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.heat-insights-head h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.heat-insights-head p {
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.heat-insights-head > span {
+  padding: 3px 7px;
+  color: var(--c-indigo);
+  background: color-mix(in oklab, var(--c-indigo), transparent 91%);
+  border: 1px solid color-mix(in oklab, var(--c-indigo), transparent 80%);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.heat-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 12px;
+}
+.heat-stat {
+  min-height: 72px;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+.heat-stat > span {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.heat-stat > strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 19px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.heat-stat strong small {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.heat-stat > small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.heat-weekday-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 15px 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.heat-weekday-head small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.heat-weekdays {
+  display: grid;
+  gap: 5px;
+}
+.heat-weekday {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 27px;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.heat-weekday-track {
+  height: 5px;
+  overflow: hidden;
+  background: var(--surface-3);
+  border-radius: 99px;
+}
+.heat-weekday-track > div {
+  height: 100%;
+  background: var(--c-indigo);
+  border-radius: inherit;
+}
+.heat-weekday strong {
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.heat-week-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 10.5px;
+}
+.heat-week-meta b {
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 880px) {
+  .heatmap-layout { grid-template-columns: minmax(0, 1fr); }
+  .heatmap-main { justify-content: flex-start; }
+}
 
 /* ─── Tables ─────────────────────────────────────────────── */
 

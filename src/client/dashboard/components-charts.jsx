@@ -2,7 +2,7 @@
    Charts — Trend, Donut, TopModels, Heatmap, Gauge, Stat
    ============================================================= */
 
-import { Fragment, useEffect, useMemo, useRef } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
 import { EChart } from '../shared/echart.jsx';
@@ -454,6 +454,9 @@ function TopModels({ rows, onDrillModel }) {
 // Heatmap (day × hour, synthetic from hourly pattern)
 // ───────────────────────────────────────────────────────────────
 function Heatmap({ rows, dates, hourlyPattern }) {
+  const [activeCell, setActiveCell] = useState(null);
+  const gridRef = useRef(null);
+
   // For each date compute total, distribute across hours
   const byDate = new Map();
   for (const r of rows) byDate.set(r.usageDate, (byDate.get(r.usageDate) || 0) + r.totalTokens);
@@ -467,69 +470,185 @@ function Heatmap({ rows, dates, hourlyPattern }) {
   const flat = matrix.flat();
   const max = Math.max(...flat, 1);
 
-  const heatColor = (v) => {
-    const t = Math.pow(v / max, 0.6);
-    if (t < 0.02) return 'oklch(0.97 0.003 80)';
-    const lightness = 0.94 - t * 0.50;
-    const chroma = 0.02 + t * 0.16;
-    return `oklch(${lightness} ${chroma} 265)`;
+  const heatLevel = (value) => {
+    if (value <= 0) return 0;
+    const intensity = Math.pow(value / max, 0.55);
+    return Math.max(1, Math.min(4, Math.ceil(intensity * 4)));
   };
 
   // Limit dates to fit nicely (28 days max for readability)
   const showDates = dates.slice(-28);
   const showMatrix = matrix.slice(-28);
 
+  // Activity summary uses real daily totals only — never the synthetic hourly split.
+  const dailyActivity = showDates.map(date => ({date, total: byDate.get(date) || 0}));
+  const activeDays = dailyActivity.filter(day => day.total > 0).length;
+  let longestStreak = 0;
+  let runningStreak = 0;
+  for (const day of dailyActivity) {
+    runningStreak = day.total > 0 ? runningStreak + 1 : 0;
+    longestStreak = Math.max(longestStreak, runningStreak);
+  }
+  const currentStreak = runningStreak;
+  const peakDay = dailyActivity.reduce(
+    (best, day) => day.total > best.total ? day : best,
+    {date: showDates.at(-1) || '—', total: 0}
+  );
+
+  const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+  const weekdayTotals = Array(7).fill(0);
+  for (const day of dailyActivity) {
+    const nativeDay = new Date(`${day.date}T12:00:00`).getDay();
+    const mondayFirstIndex = (nativeDay + 6) % 7;
+    weekdayTotals[mondayFirstIndex] += day.total;
+  }
+  const weekdayMax = Math.max(...weekdayTotals, 1);
+  const weekdayGrandTotal = weekdayTotals.reduce((sum, value) => sum + value, 0);
+  const weekdayUsage = weekdayTotals.slice(0, 5).reduce((sum, value) => sum + value, 0);
+  const weekdayShare = weekdayGrandTotal ? Math.round((weekdayUsage / weekdayGrandTotal) * 100) : 0;
+  const topWeekdayIndex = weekdayTotals.indexOf(Math.max(...weekdayTotals));
+
   const HOURS_LABELS = ['0', '', '', '', '4', '', '', '', '8', '', '', '', '12', '', '', '', '16', '', '', '', '20', '', '', ''];
 
-  const rowCount = showDates.length;
-  const cellH = 18;
-  const gap = 2;
+  const showTooltip = (event, date, hour, value) => {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    const gridRect = grid.getBoundingClientRect();
+    const cellRect = event.currentTarget.getBoundingClientRect();
+    const dayTotal = byDate.get(date) || 0;
+    setActiveCell({
+      date,
+      hour,
+      value,
+      dayTotal,
+      left: cellRect.left - gridRect.left + cellRect.width / 2,
+      top: cellRect.top - gridRect.top
+    });
+  };
 
   return (
     <div className="panel">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">使用热力图</h2>
-          <p className="panel-sub">最近 {showDates.length} 天 × 24 小时分布 · 个人活跃时段</p>
+          <p className="panel-sub">最近 {showDates.length} 天 × 24 小时 · 小时分布按日总量估算</p>
         </div>
         <span className="heat-scale">
           少
-          <span className="heat-scale-bar">
-            {Array.from({length: 8}, (_, i) => (
-              <span key={i} style={{background: heatColor((i / 7) * max)}}/>
+          <span className="heat-scale-cells" aria-hidden="true">
+            {Array.from({length: 5}, (_, level) => (
+              <span key={level} className={`heat-cell heat-level-${level}`}/>
             ))}
           </span>
           多
         </span>
       </div>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: `52px repeat(24, 1fr)`,
-        gridTemplateRows: `18px repeat(${rowCount}, ${cellH}px)`,
-        columnGap: gap, rowGap: gap,
-        alignItems: 'center'
-      }}>
-        <div/>
-        {HOURS_LABELS.map((h, i) => (
-          <div key={`h-${i}`} className="heat-col-label" style={{gridRow: 1, gridColumn: i + 2}}>{h}</div>
-        ))}
+      <div className="heatmap-layout">
+        <div className="heatmap-main">
+          <div className="heatmap-scroll">
+            <div
+              ref={gridRef}
+              className="heatmap-grid"
+              style={{
+                gridTemplateColumns: '48px repeat(24, 13px)',
+                gridTemplateRows: `16px repeat(${showDates.length}, 13px)`
+              }}>
+              <div/>
+              {HOURS_LABELS.map((h, i) => (
+                <div key={`h-${i}`} className="heat-col-label" style={{gridRow: 1, gridColumn: i + 2}}>{h}</div>
+              ))}
 
-        {showDates.map((d, di) => (
-          <Fragment key={d}>
-            <div className="heat-row-label" style={{gridRow: di + 2, gridColumn: 1}}>
-              {di % 3 === 0 || di === showDates.length - 1 ? d.slice(5) : ''}
+              {showDates.map((d, di) => (
+                <Fragment key={d}>
+                  <div className="heat-row-label" style={{gridRow: di + 2, gridColumn: 1}}>
+                    {di % 3 === 0 || di === showDates.length - 1 ? d.slice(5) : ''}
+                  </div>
+                  {showMatrix[di].map((v, hi) => {
+                    const hour = String(hi).padStart(2, '0');
+                    const label = `${d} ${hour}:00，${U.compactCN(v)} tokens`;
+                    return (
+                      <button
+                        key={`${di}-${hi}`}
+                        type="button"
+                        className={`heat-cell heat-level-${heatLevel(v)}`}
+                        style={{gridRow: di + 2, gridColumn: hi + 2}}
+                        aria-label={label}
+                        onMouseEnter={event => showTooltip(event, d, hi, v)}
+                        onMouseLeave={() => setActiveCell(null)}
+                        onFocus={event => showTooltip(event, d, hi, v)}
+                        onBlur={() => setActiveCell(null)} />
+                    );
+                  })}
+                </Fragment>
+              ))}
+
+              {activeCell && (
+                <div
+                  className="heat-tooltip"
+                  role="tooltip"
+                  style={{left: activeCell.left, top: activeCell.top}}>
+                  <strong>{activeCell.date} · {String(activeCell.hour).padStart(2, '0')}:00</strong>
+                  <span>{U.compactCN(activeCell.value)} tokens</span>
+                  <small>当日总量 {U.compactCN(activeCell.dayTotal)}</small>
+                </div>
+              )}
             </div>
-            {showMatrix[di].map((v, hi) => (
-              <div key={`${di}-${hi}`} className="heat-cell"
-                style={{
-                  gridRow: di + 2, gridColumn: hi + 2,
-                  background: heatColor(v),
-                  height: cellH
-                }}
-                title={`${showDates[di]} ${String(hi).padStart(2,'0')}:00 · ${U.compactCN(v)} tokens`}/>
-            ))}
-          </Fragment>
-        ))}
+          </div>
+        </div>
+
+        <aside className="heat-insights" aria-label="活跃摘要">
+          <div className="heat-insights-head">
+            <div>
+              <h3>活跃摘要</h3>
+              <p>基于真实日用量</p>
+            </div>
+            <span>{activeDays}/{showDates.length} 天活跃</span>
+          </div>
+
+          <div className="heat-stat-grid">
+            <div className="heat-stat">
+              <span>活跃天数</span>
+              <strong>{activeDays}<small> / {showDates.length} 天</small></strong>
+            </div>
+            <div className="heat-stat">
+              <span>当前连续</span>
+              <strong>{currentStreak}<small> 天</small></strong>
+            </div>
+            <div className="heat-stat">
+              <span>最长连续</span>
+              <strong>{longestStreak}<small> 天</small></strong>
+            </div>
+            <div className="heat-stat">
+              <span>峰值日期</span>
+              <strong>{peakDay.date === '—' ? '—' : peakDay.date.slice(5)}</strong>
+              <small>{U.compactCN(peakDay.total)} tokens</small>
+            </div>
+          </div>
+
+          <div className="heat-weekday-head">
+            <span>星期分布</span>
+            <small>高峰 {WEEKDAY_LABELS[topWeekdayIndex]}</small>
+          </div>
+          <div className="heat-weekdays">
+            {weekdayTotals.map((value, index) => {
+              const share = weekdayGrandTotal ? Math.round((value / weekdayGrandTotal) * 100) : 0;
+              return (
+                <div className="heat-weekday" key={WEEKDAY_LABELS[index]}>
+                  <span>{WEEKDAY_LABELS[index]}</span>
+                  <div className="heat-weekday-track" aria-label={`${WEEKDAY_LABELS[index]}占比 ${share}%`}>
+                    <div style={{width: value ? `${Math.max(4, (value / weekdayMax) * 100)}%` : 0}}/>
+                  </div>
+                  <strong>{share}%</strong>
+                </div>
+              );
+            })}
+          </div>
+          <div className="heat-week-meta">
+            <span>工作日 <b>{weekdayShare}%</b></span>
+            <span>周末 <b>{100 - weekdayShare}%</b></span>
+          </div>
+        </aside>
       </div>
     </div>
   );
