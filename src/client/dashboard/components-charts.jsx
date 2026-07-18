@@ -6,7 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
 import { EChart } from '../shared/echart.jsx';
-import { Delta } from './components-top.jsx';
+import { Delta, Spark } from './components-top.jsx';
 
 // ───────────────────────────────────────────────────────────────
 // Trend chart — switchable bar/line/stacked + optional comparison
@@ -664,15 +664,10 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
 // ───────────────────────────────────────────────────────────────
 // Gauge / arc — cache hit rate
 // ───────────────────────────────────────────────────────────────
-function Gauge({ rate, cacheRead, cacheCreation, total, prevRate }) {
+function Gauge({ rate, cacheRead, cacheCreation, total, prevRate, savedUSD, hitRateSeries }) {
   const r = Math.max(0, Math.min(100, rate));
   const C = Math.PI * 70;
   const dash = (r / 100) * C;
-
-  const cacheTotal = (cacheRead || 0) + (cacheCreation || 0);
-  const readPct = cacheTotal ? (cacheRead / cacheTotal) * 100 : 0;
-  const createPct = cacheTotal ? (cacheCreation / cacheTotal) * 100 : 0;
-  const cacheOfTotalPct = total ? (cacheTotal / total) * 100 : 0;
 
   return (
     <div className="panel cache-card">
@@ -710,30 +705,22 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate }) {
         </div>
       </div>
 
-      <div className="cache-metrics">
-        <div className="cache-metric">
-          <div className="cache-metric-head">
-            <span className="cache-metric-label">读取 vs 创建</span>
-            <span className="cache-metric-val">{readPct.toFixed(0)}% / {createPct.toFixed(0)}%</span>
-          </div>
-          <div className="cache-track cache-track-split">
-            <div className="cache-fill cache-fill-read" style={{ width: `${readPct}%` }} />
-          </div>
-          <div className="cache-metric-foot">
-            <span><i className="cache-key cache-key-read" />读取 <b>{U.compactCN(cacheRead)}</b></span>
-            <span><i className="cache-key cache-key-create" />创建 <b>{U.compactCN(cacheCreation)}</b></span>
-          </div>
-        </div>
+      <div className="cache-line">
+        <span><i className="cache-key cache-key-read"/>读取 <b>{U.compactCN(cacheRead)}</b></span>
+        <span><i className="cache-key cache-key-create"/>创建 <b>{U.compactCN(cacheCreation)}</b></span>
+      </div>
 
-        <div className="cache-metric">
-          <div className="cache-metric-head">
-            <span className="cache-metric-label">缓存占总 Token</span>
-            <span className="cache-metric-val">{cacheOfTotalPct.toFixed(1)}%</span>
-          </div>
-          <div className="cache-track">
-            <div className="cache-fill cache-fill-total" style={{ width: `${cacheOfTotalPct}%` }} />
-          </div>
+      <div className="cache-saved">
+        <div className="cache-saved-label">缓存节省费用</div>
+        <div className="cache-saved-num">≈ {U.fmtUS.format(savedUSD || 0)}</div>
+        <div className="cache-saved-sub">若无缓存需多付的估算金额</div>
+      </div>
+
+      <div className="cache-trend">
+        <div className="cache-trend-head">
+          <span>每日命中率</span>
         </div>
+        <Spark values={hitRateSeries} color="oklch(0.65 0.11 200)" height={36}/>
       </div>
     </div>
   );
@@ -778,7 +765,7 @@ function GrowthPanel({ totalsByDay }) {
           <p className="panel-sub">基于当前筛选周期</p>
         </div>
       </div>
-      <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+      <div style={{display: 'flex', flexDirection: 'column', gap: 8, flex: 1, justifyContent: 'space-evenly'}}>
         <GrowthStat label="日环比 DoD" value={dod} sub={`今日 ${U.compactCN(today)}`}/>
         <GrowthStat label="周环比 WoW" value={wow} sub={`7 日 ${U.compactCN(last7)}`}/>
         <GrowthStat label="月环比 MoM" value={mom} sub={`30 日 ${U.compactCN(last30)}`}/>

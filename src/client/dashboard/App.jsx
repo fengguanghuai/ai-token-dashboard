@@ -324,6 +324,19 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
     return dates.map(d => m.get(d) || 0);
   }, [filtered, dates]);
 
+  // Daily cache hit-rate series for the gauge card sparkline
+  const hitRateSeries = useMemo(() => {
+    const read = new Map(), tot = new Map();
+    for (const r of filtered) {
+      read.set(r.usageDate, (read.get(r.usageDate) || 0) + (r.cacheReadTokens || 0));
+      tot.set(r.usageDate, (tot.get(r.usageDate) || 0) + r.totalTokens);
+    }
+    return dates.map(d => {
+      const t = tot.get(d) || 0;
+      return t ? ((read.get(d) || 0) / t) * 100 : 0;
+    });
+  }, [filtered, dates]);
+
   // ───── Sessions filtered ─────
   const filteredSessions = useMemo(() => {
     return M.sessions.filter(s =>
@@ -468,7 +481,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
             cacheRead={totals.cacheReadTokens}
             cacheCreation={totals.cacheCreationTokens}
             total={totals.totalTokens}
-            prevRate={compareData.totals?.cacheHitRate} />
+            prevRate={compareData.totals?.cacheHitRate}
+            savedUSD={totals.cacheSavedUSD}
+            hitRateSeries={hitRateSeries} />
         </div>
         <div className="col-3" style={{ gridColumn: 'span 3' }}>
           <GrowthPanel totalsByDay={dailyTotalsByDay} />

@@ -604,4 +604,4 @@ function KPI({ label, value, sub, delta, dotColor, sparkValues, sparkColor }) {
   );
 }
 
-export { Topbar, FilterBar, KPI, Delta };
+export { Topbar, FilterBar, KPI, Delta, Spark };
