@@ -40,20 +40,6 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
     ? compareDates.map(d => compareByDate.get(d) || 0)
     : null;
 
-  const topSourceByDate = useMemo(() => {
-    const top = new Map();
-    for (const d of dates) {
-      for (let i = sources.length - 1; i >= 0; i -= 1) {
-        const src = sources[i];
-        if ((byKey.get(`${d}::${src}`) || 0) > 0) {
-          top.set(d, src);
-          break;
-        }
-      }
-    }
-    return top;
-  }, [byKey, dates, sources]);
-
   // Trend rolling-avg (7-day) for line mode
   const rolling = (() => {
     const arr = [];
@@ -93,16 +79,7 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
         barMaxWidth: 24,
         itemStyle: { color: palette[i] },
         ...stableBarState,
-        data: dates.map(d => {
-          const value = byKey.get(`${d}::${src}`) || 0;
-          if (mode === 'bar') return { value, itemStyle: { borderRadius: [3, 3, 0, 0] } };
-          return {
-            value,
-            itemStyle: {
-              borderRadius: value > 0 && topSourceByDate.get(d) === src ? [4, 4, 0, 0] : 0
-            }
-          };
-        })
+        data: dates.map(d => byKey.get(`${d}::${src}`) || 0)
       });
     });
   } else if (mode === 'line') {
