@@ -2,8 +2,9 @@ import { useMemo } from 'react';
 import { CalendarBlank, Clock, Info, Pulse, TrendUp, Warning } from '@phosphor-icons/react';
 import { U } from '../../shared/utils.js';
 import { useChart, normalizeNumber, shortDate, MetricCard } from '../view-utils.jsx';
+import { chartVars } from '../theme.js';
 
-export default function ActivityView({ daily, hourly, dates, hourlyError }) {
+export default function ActivityView({ daily, hourly, dates, hourlyError, theme }) {
   const activeDates = useMemo(() => new Set(daily.filter(row => normalizeNumber(row.totalTokens) > 0).map(row => row.usageDate)), [daily]);
   const { current, longest } = useMemo(() => calculateStreaks(dates, activeDates), [dates, activeDates]);
   const peakHour = useMemo(() => {
@@ -27,11 +28,11 @@ export default function ActivityView({ daily, hourly, dates, hourlyError }) {
       </section>
       <section className="panel activity-heat-panel">
         <div className="section-heading"><div><h2>使用热力图</h2><p>最近 {recentHeatDates.length} 天 × 24 小时 · 悬浮查看真实用量</p></div><div className="heat-legend"><span>少</span><i className="l0" /><i className="l1" /><i className="l2" /><i className="l3" /><i className="l4" /><span>多</span></div></div>
-        {hourlyError ? <div className="chart-empty"><Warning size={22} />{hourlyError}</div> : <HeatmapChart rows={hourly} dates={recentHeatDates} />}
+        {hourlyError ? <div className="chart-empty"><Warning size={22} />{hourlyError}</div> : <HeatmapChart rows={hourly} dates={recentHeatDates} theme={theme} />}
       </section>
       <div className="two-column">
-        <section className="panel compact-panel"><div className="section-heading"><div><h2>星期分布</h2><p>各星期 Token 占比</p></div></div><WeekdayChart rows={weekday} /></section>
-        <section className="panel compact-panel"><div className="section-heading"><div><h2>小时节奏</h2><p>所选周期的 24 小时使用轮廓</p></div></div><HourlyChart rows={hourly} /></section>
+        <section className="panel compact-panel"><div className="section-heading"><div><h2>星期分布</h2><p>各星期 Token 占比</p></div></div><WeekdayChart rows={weekday} theme={theme} /></section>
+        <section className="panel compact-panel"><div className="section-heading"><div><h2>小时节奏</h2><p>所选周期的 24 小时使用轮廓</p></div></div><HourlyChart rows={hourly} theme={theme} /></section>
       </div>
       <div className="coverage-note"><Info size={16} /><span>小时图仅统计已提供事件级记录的来源；日级活跃天数仍使用完整的日聚合数据。</span></div>
     </div>
@@ -55,8 +56,9 @@ function calculateStreaks(dates, activeDates) {
   return { current, longest };
 }
 
-function HeatmapChart({ rows, dates }) {
+function HeatmapChart({ rows, dates, theme }) {
   const option = useMemo(() => {
+    const vars = chartVars();
     const map = new Map();
     for (const row of rows) {
       const key = `${row.usageDate}-${row.hour}`;
@@ -70,43 +72,49 @@ function HeatmapChart({ rows, dates }) {
     return {
       animationDuration: 320,
       grid: { left: 58, right: 18, top: 30, bottom: 18 },
-      tooltip: { formatter: ({ data: point }) => `${dates[point[1]]} ${String(point[0]).padStart(2, '0')}:00<br/><b>${U.compactCN(point[2])} tokens</b>`, backgroundColor: '#1d1d20', borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 } },
-      xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, hour) => hour), position: 'top', axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#77736e', interval: 3, fontSize: 10 } },
-      yAxis: { type: 'category', data: dates.map(shortDate), inverse: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: '#77736e', fontSize: 10, interval: dates.length > 18 ? 2 : 1 } },
-      visualMap: { show: false, min: 0, max, inRange: { color: ['#f0eee9', '#dfe6f8', '#b3c2ee', '#6e8dde', '#345cc5'] } },
-      series: [{ type: 'heatmap', data, itemStyle: { borderColor: '#fcfbf8', borderWidth: 2, borderRadius: 3 }, emphasis: { itemStyle: { borderColor: '#1d1d20', borderWidth: 1 } } }]
+      tooltip: { formatter: ({ data: point }) => `${dates[point[1]]} ${String(point[0]).padStart(2, '0')}:00<br/><b>${U.compactCN(point[2])} tokens</b>`, backgroundColor: vars.tooltipBg, borderWidth: 0, textStyle: { color: '#fff', fontSize: 12 } },
+      xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, hour) => hour), position: 'top', axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: vars.muted, interval: 3, fontSize: 10 } },
+      yAxis: { type: 'category', data: dates.map(shortDate), inverse: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: vars.muted, fontSize: 10, interval: dates.length > 18 ? 2 : 1 } },
+      visualMap: { show: false, min: 0, max, inRange: { color: [vars.grid, '#dfe6f8', '#b3c2ee', '#6e8dde', vars.accent] } },
+      series: [{ type: 'heatmap', data, itemStyle: { borderColor: vars.surface, borderWidth: 2, borderRadius: 3 }, emphasis: { itemStyle: { borderColor: vars.text, borderWidth: 1 } } }]
     };
-  }, [rows, dates]);
+  }, [rows, dates, theme]);
   const ref = useChart(option, [option]);
   return <div className="activity-heat-chart" ref={ref} role="img" aria-label="按日期和小时展示的使用热力图" />;
 }
 
-function WeekdayChart({ rows }) {
+function WeekdayChart({ rows, theme }) {
   const labels = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const option = useMemo(() => ({
-    grid: { left: 48, right: 18, top: 18, bottom: 32 },
-    tooltip: { trigger: 'axis', backgroundColor: '#1d1d20', borderWidth: 0, textStyle: { color: '#fff' }, valueFormatter: value => `${U.compactCN(value)} tokens` },
-    xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: '#dedbd5' } }, axisTick: { show: false }, axisLabel: { color: '#77736e', fontSize: 10 } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#eeebe5' } }, axisLabel: { color: '#8b8781', fontSize: 10, formatter: value => U.compact(value) } },
-    series: [{ type: 'bar', data: rows.map(row => row.value), barMaxWidth: 30, itemStyle: { color: '#4168d8', borderRadius: [5, 5, 2, 2] } }]
-  }), [rows]);
+  const option = useMemo(() => {
+    const vars = chartVars();
+    return {
+      grid: { left: 48, right: 18, top: 18, bottom: 32 },
+      tooltip: { trigger: 'axis', backgroundColor: vars.tooltipBg, borderWidth: 0, textStyle: { color: '#fff' }, valueFormatter: value => `${U.compactCN(value)} tokens` },
+      xAxis: { type: 'category', data: labels, axisLine: { lineStyle: { color: vars.border } }, axisTick: { show: false }, axisLabel: { color: vars.muted, fontSize: 10 } },
+      yAxis: { type: 'value', splitLine: { lineStyle: { color: vars.grid } }, axisLabel: { color: vars.muted, fontSize: 10, formatter: value => U.compact(value) } },
+      series: [{ type: 'bar', data: rows.map(row => row.value), barMaxWidth: 30, itemStyle: { color: vars.accent, borderRadius: [5, 5, 2, 2] } }]
+    };
+  }, [rows, theme]);
   const ref = useChart(option, [option]);
   return <div className="small-chart" ref={ref} />;
 }
 
-function HourlyChart({ rows }) {
+function HourlyChart({ rows, theme }) {
   const values = useMemo(() => {
     const hours = Array.from({ length: 24 }, () => 0);
     for (const row of rows) hours[Number(row.hour)] += normalizeNumber(row.totalTokens);
     return hours;
   }, [rows]);
-  const option = useMemo(() => ({
-    grid: { left: 48, right: 18, top: 18, bottom: 32 },
-    tooltip: { trigger: 'axis', backgroundColor: '#1d1d20', borderWidth: 0, textStyle: { color: '#fff' }, valueFormatter: value => `${U.compactCN(value)} tokens` },
-    xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, hour) => hour), axisLine: { lineStyle: { color: '#dedbd5' } }, axisTick: { show: false }, axisLabel: { color: '#77736e', fontSize: 10, interval: 3 } },
-    yAxis: { type: 'value', splitLine: { lineStyle: { color: '#eeebe5' } }, axisLabel: { color: '#8b8781', fontSize: 10, formatter: value => U.compact(value) } },
-    series: [{ type: 'line', data: values, smooth: 0.3, symbol: 'none', lineStyle: { color: '#4168d8', width: 2 }, areaStyle: { color: 'rgba(65,104,216,.12)' } }]
-  }), [values]);
+  const option = useMemo(() => {
+    const vars = chartVars();
+    return {
+      grid: { left: 48, right: 18, top: 18, bottom: 32 },
+      tooltip: { trigger: 'axis', backgroundColor: vars.tooltipBg, borderWidth: 0, textStyle: { color: '#fff' }, valueFormatter: value => `${U.compactCN(value)} tokens` },
+      xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, hour) => hour), axisLine: { lineStyle: { color: vars.border } }, axisTick: { show: false }, axisLabel: { color: vars.muted, fontSize: 10, interval: 3 } },
+      yAxis: { type: 'value', splitLine: { lineStyle: { color: vars.grid } }, axisLabel: { color: vars.muted, fontSize: 10, formatter: value => U.compact(value) } },
+      series: [{ type: 'line', data: values, smooth: 0.3, symbol: 'none', lineStyle: { color: vars.accent, width: 2 }, areaStyle: { color: 'rgba(88,101,242,.12)' } }]
+    };
+  }, [values, theme]);
   const ref = useChart(option, [option]);
   return <div className="small-chart" ref={ref} />;
 }

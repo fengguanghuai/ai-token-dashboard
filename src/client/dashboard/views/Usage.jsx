@@ -37,7 +37,7 @@ export default function UsageView({ daily, totals, sessionAggregates, announce }
               <div className="rank-row" key={row.name}>
                 <span className="rank-number">{index + 1}</span>
                 <div className="rank-name">{dimension === 'source' ? <SourceIdentity source={row.name} /> : <strong title={row.name}>{row.name}</strong>}<small>{row.rows.length} 条记录</small></div>
-                <div className="rank-bar"><span style={{ width: `${percentage}%`, background: dimension === 'source' ? U.getSourceColor(row.name) : '#4168d8' }} /></div>
+                <div className="rank-bar"><span style={{ width: `${percentage}%`, background: dimension === 'source' ? U.getSourceColor(row.name) : 'var(--accent)' }} /></div>
                 <strong className="rank-value">{measure === 'cost' ? U.fmtUS.format(row.costUSD) : U.compactCN(row.totalTokens)}</strong>
                 <span className="rank-cost">{measure === 'cost' ? U.compactCN(row.totalTokens) : U.fmtUS.format(row.costUSD)}</span>
               </div>
