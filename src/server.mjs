@@ -148,6 +148,26 @@ function handleApi(req, url, res) {
     });
     return;
   }
+  if (url.pathname === '/api/hourly') {
+    // Pre-aggregate events for the dashboard heatmap. Keeping the filter
+    // dimensions in the result lets the client apply the same source/device/
+    // model filters without downloading the much larger per-event dataset.
+    sendJson(res, {
+      hourly: all(`
+        SELECT device, source,
+          usage_date AS usageDate,
+          CAST(strftime('%H', event_time, 'localtime') AS INTEGER) AS hour,
+          model,
+          COUNT(*) AS eventCount,
+          SUM(total_tokens) AS totalTokens,
+          SUM(cost_usd) AS costUSD
+        FROM time_usage
+        GROUP BY device, source, usage_date, hour, model
+        ORDER BY usage_date DESC, hour DESC
+      `)
+    });
+    return;
+  }
   if (url.pathname === '/api/quota') {
     handleQuota(res);
     return;

@@ -20,6 +20,8 @@ function summarizeCollectOutput(stdout) {
 export function App() {
   const [M, setM] = useState(null);
   const [timeRows, setTimeRows] = useState(null);   // null until the precise view asks for it
+  const [hourlyRows, setHourlyRows] = useState(null);
+  const [hourlyError, setHourlyError] = useState(null);
   const [quota, setQuota] = useState(null);         // live subscription-window quota
   const [loadError, setLoadError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,6 +43,19 @@ export function App() {
     loadTime();
   }, [loadTime]);
 
+  // The heatmap uses compact server-side hourly aggregates rather than the
+  // full per-event payload used by the precise table view.
+  const loadHourly = useCallback(() => {
+    setHourlyError(null);
+    return fetch('/api/hourly')
+      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(data => setHourlyRows(data.hourly || []))
+      .catch(err => {
+        setHourlyRows([]);
+        setHourlyError(err.message || '小时数据加载失败');
+      });
+  }, []);
+
   // ───── Load data from API ─────
   // ───── Live subscription-window quota (5h / 7d) ─────
   // Refreshed on first load and whenever the user hits the refresh button —
@@ -55,6 +70,7 @@ export function App() {
   const loadData = useCallback(() => {
     setRefreshing(true);
     loadQuota();
+    loadHourly();
     fetch('/api/data')
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -68,21 +84,10 @@ export function App() {
           color: U.getSourceColor(name)
         }));
 
-        // Standard hourly pattern (normalized)
-        const rawHourly = [
-          0.005, 0.003, 0.002, 0.001, 0.001, 0.003,
-          0.008, 0.025, 0.045, 0.075, 0.092, 0.082,
-          0.055, 0.078, 0.092, 0.088, 0.080, 0.060,
-          0.045, 0.038, 0.045, 0.040, 0.025, 0.012
-        ];
-        const hsum = rawHourly.reduce((a, b) => a + b, 0);
-        const HOURLY = rawHourly.map(v => v / hsum);
-
         setM({
           ...data,
           daily: data.daily || [],
           SOURCES,
-          HOURLY,
           today: U.daysAgo(0)
         });
         setLoadError(null);
@@ -91,7 +96,7 @@ export function App() {
       })
       .catch(err => setLoadError(err.message))
       .finally(() => setRefreshing(false));
-  }, [loadTime, loadQuota]);
+  }, [loadHourly, loadTime, loadQuota]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -191,7 +196,13 @@ export function App() {
 
   return (
     <Dashboard
-      M={{ ...M, time: timeRows || EMPTY_TIME }}
+      M={{
+        ...M,
+        time: timeRows || EMPTY_TIME,
+        hourly: hourlyRows || EMPTY_TIME,
+        hourlyLoading: hourlyRows === null,
+        hourlyError
+      }}
       refreshing={refreshing}
       collecting={collecting}
       collectStatus={collectStatus}
@@ -254,6 +265,12 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       ? U.filterTime(M.time, effective)
       : U.filterDaily(M.daily, effective);
   }, [filters, focusedSource, M.daily, M.time]);
+
+  const filteredHourly = useMemo(() => {
+    const effective = { ...filters };
+    if (focusedSource) effective.sources = new Set([focusedSource]);
+    return U.filterDaily(M.hourly, effective);
+  }, [filters, focusedSource, M.hourly]);
 
   const totals = useMemo(() => U.aggregateTotals(filtered), [filtered]);
 
@@ -466,7 +483,11 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         </div>
 
         <div className="col-12">
-          <Heatmap rows={filtered} dates={dates} hourlyPattern={M.HOURLY} />
+          <Heatmap
+            rows={filteredHourly}
+            dates={dates}
+            loading={M.hourlyLoading}
+            error={M.hourlyError} />
         </div>
 
         <div className="col-12">

@@ -451,24 +451,38 @@ function TopModels({ rows, onDrillModel }) {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Heatmap (day × hour, synthetic from hourly pattern)
+// Heatmap (day × hour, real per-event aggregates)
 // ───────────────────────────────────────────────────────────────
-function Heatmap({ rows, dates, hourlyPattern }) {
+function Heatmap({ rows, dates, loading = false, error = null }) {
   const [activeCell, setActiveCell] = useState(null);
   const gridRef = useRef(null);
 
-  // For each date compute total, distribute across hours
+  const byCell = new Map();
   const byDate = new Map();
-  for (const r of rows) byDate.set(r.usageDate, (byDate.get(r.usageDate) || 0) + r.totalTokens);
+  for (const r of rows) {
+    const hour = Number(r.hour);
+    if (!r.usageDate || !Number.isInteger(hour) || hour < 0 || hour > 23) continue;
 
-  // Build a matrix: [date][hour]
+    const key = `${r.usageDate}::${hour}`;
+    const current = byCell.get(key) || {tokens: 0, cost: 0, events: 0};
+    current.tokens += Number(r.totalTokens) || 0;
+    current.cost += Number(r.costUSD) || 0;
+    current.events += Number(r.eventCount) || 0;
+    byCell.set(key, current);
+    byDate.set(r.usageDate, (byDate.get(r.usageDate) || 0) + (Number(r.totalTokens) || 0));
+  }
+
+  // Build a matrix with explicit zero-value cells for hours without events.
   const matrix = dates.map(d => {
-    const total = byDate.get(d) || 0;
-    return hourlyPattern.map(h => Math.round(total * h));
+    return Array.from({length: 24}, (_, hour) =>
+      byCell.get(`${d}::${hour}`) || {tokens: 0, cost: 0, events: 0}
+    );
   });
 
-  const flat = matrix.flat();
-  const max = Math.max(...flat, 1);
+  // Limit dates to fit nicely (28 days max for readability)
+  const showDates = dates.slice(-28);
+  const showMatrix = matrix.slice(-28);
+  const max = Math.max(...showMatrix.flat().map(cell => cell.tokens), 1);
 
   const heatLevel = (value) => {
     if (value <= 0) return 0;
@@ -476,11 +490,7 @@ function Heatmap({ rows, dates, hourlyPattern }) {
     return Math.max(1, Math.min(4, Math.ceil(intensity * 4)));
   };
 
-  // Limit dates to fit nicely (28 days max for readability)
-  const showDates = dates.slice(-28);
-  const showMatrix = matrix.slice(-28);
-
-  // Activity summary uses real daily totals only — never the synthetic hourly split.
+  // Activity summary and heatmap now share the same real hourly aggregates.
   const dailyActivity = showDates.map(date => ({date, total: byDate.get(date) || 0}));
   const activeDays = dailyActivity.filter(day => day.total > 0).length;
   let longestStreak = 0;
@@ -510,7 +520,7 @@ function Heatmap({ rows, dates, hourlyPattern }) {
 
   const HOURS_LABELS = ['0', '', '', '', '4', '', '', '', '8', '', '', '', '12', '', '', '', '16', '', '', '', '20', '', '', ''];
 
-  const showTooltip = (event, date, hour, value) => {
+  const showTooltip = (event, date, hour, cell) => {
     const grid = gridRef.current;
     if (!grid) return;
 
@@ -520,7 +530,7 @@ function Heatmap({ rows, dates, hourlyPattern }) {
     setActiveCell({
       date,
       hour,
-      value,
+      ...cell,
       dayTotal,
       left: cellRect.left - gridRect.left + cellRect.width / 2,
       top: cellRect.top - gridRect.top
@@ -532,7 +542,13 @@ function Heatmap({ rows, dates, hourlyPattern }) {
       <div className="panel-header">
         <div>
           <h2 className="panel-title">使用热力图</h2>
-          <p className="panel-sub">最近 {showDates.length} 天 × 24 小时 · 小时分布按日总量估算</p>
+          <p className="panel-sub">
+            {error
+              ? `最近 ${showDates.length} 天 × 24 小时 · 真实小时数据加载失败`
+              : loading
+                ? `最近 ${showDates.length} 天 × 24 小时 · 正在加载真实小时记录…`
+                : `最近 ${showDates.length} 天 × 24 小时 · 基于真实逐事件记录`}
+          </p>
         </div>
         <span className="heat-scale">
           少
@@ -550,6 +566,7 @@ function Heatmap({ rows, dates, hourlyPattern }) {
             <div
               ref={gridRef}
               className="heatmap-grid"
+              aria-busy={loading}
               style={{
                 gridTemplateColumns: '48px repeat(24, 13px)',
                 gridTemplateRows: `16px repeat(${showDates.length}, 13px)`
@@ -564,19 +581,26 @@ function Heatmap({ rows, dates, hourlyPattern }) {
                   <div className="heat-row-label" style={{gridRow: di + 2, gridColumn: 1}}>
                     {di % 3 === 0 || di === showDates.length - 1 ? d.slice(5) : ''}
                   </div>
-                  {showMatrix[di].map((v, hi) => {
+                  {showMatrix[di].map((cell, hi) => {
                     const hour = String(hi).padStart(2, '0');
-                    const label = `${d} ${hour}:00，${U.compactCN(v)} tokens`;
+                    const hasUsage = cell.tokens > 0;
+                    const label = hasUsage
+                      ? `${d} ${hour}:00，${U.compactCN(cell.tokens)} tokens，${cell.events} 条记录`
+                      : `${d} ${hour}:00，无使用记录`;
                     return (
                       <button
                         key={`${di}-${hi}`}
                         type="button"
-                        className={`heat-cell heat-level-${heatLevel(v)}`}
+                        className={`heat-cell heat-level-${heatLevel(cell.tokens)}`}
                         style={{gridRow: di + 2, gridColumn: hi + 2}}
                         aria-label={label}
-                        onMouseEnter={event => showTooltip(event, d, hi, v)}
+                        data-date={d}
+                        data-hour={hi}
+                        data-tokens={cell.tokens}
+                        data-events={cell.events}
+                        onMouseEnter={event => showTooltip(event, d, hi, cell)}
                         onMouseLeave={() => setActiveCell(null)}
-                        onFocus={event => showTooltip(event, d, hi, v)}
+                        onFocus={event => showTooltip(event, d, hi, cell)}
                         onBlur={() => setActiveCell(null)} />
                     );
                   })}
@@ -589,8 +613,15 @@ function Heatmap({ rows, dates, hourlyPattern }) {
                   role="tooltip"
                   style={{left: activeCell.left, top: activeCell.top}}>
                   <strong>{activeCell.date} · {String(activeCell.hour).padStart(2, '0')}:00</strong>
-                  <span>{U.compactCN(activeCell.value)} tokens</span>
-                  <small>当日总量 {U.compactCN(activeCell.dayTotal)}</small>
+                  {activeCell.tokens > 0 ? (
+                    <>
+                      <span>{U.compactCN(activeCell.tokens)} tokens</span>
+                      <small>{activeCell.events} 条记录 · {U.fmtUS.format(activeCell.cost)}</small>
+                      <small>当日总量 {U.compactCN(activeCell.dayTotal)}</small>
+                    </>
+                  ) : (
+                    <span>无使用记录</span>
+                  )}
                 </div>
               )}
             </div>
@@ -601,7 +632,7 @@ function Heatmap({ rows, dates, hourlyPattern }) {
           <div className="heat-insights-head">
             <div>
               <h3>活跃摘要</h3>
-              <p>基于真实日用量</p>
+              <p>基于真实逐事件记录</p>
             </div>
             <span>{activeDays}/{showDates.length} 天活跃</span>
           </div>
