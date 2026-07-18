@@ -3,20 +3,20 @@
    ============================================================= */
 
 :root {
-  /* Warm cream paper background */
-  --paper:        oklch(0.97 0.008 80);
-  --paper-2:      oklch(0.95 0.008 80);
-  --paper-3:      oklch(0.92 0.010 80);
-  --ink:          oklch(0.16 0.010 60);
-  --ink-2:        oklch(0.32 0.010 60);
-  --ink-3:        oklch(0.50 0.008 60);
-  --ink-soft:     oklch(0.68 0.006 60);
+  /* Neutral light surface — aligned with dashboard token system */
+  --paper:        #f7f7f8;
+  --paper-2:      #efeff2;
+  --paper-3:      #e4e4e9;
+  --ink:          #18181b;
+  --ink-2:        #3f3f46;
+  --ink-3:        #6b6b76;
+  --ink-soft:     #a3a3ad;
 
-  --rule:         oklch(0.88 0.010 60);
-  --rule-2:       oklch(0.93 0.010 60);
+  --rule:         #d9d9de;
+  --rule-2:       #e7e7ea;
 
   /* Accents — same palette as dashboard */
-  --indigo:    oklch(0.55 0.16 265);
+  --indigo:    #5865f2;
   --violet:    oklch(0.60 0.15 295);
   --teal:      oklch(0.55 0.13 200);
   --amber:     oklch(0.68 0.15 70);
@@ -47,18 +47,6 @@ html, body {
 
 button, input { font-family: inherit; color: inherit; }
 
-/* paper texture */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(oklch(0.55 0.02 60 / 0.025) 1px, transparent 1px);
-  background-size: 3px 3px;
-  z-index: 0;
-  opacity: 0.6;
-}
 
 /* ─── Page chrome ─────────────────────────────────────────── */
 
