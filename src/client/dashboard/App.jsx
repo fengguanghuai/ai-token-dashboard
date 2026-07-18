@@ -4,14 +4,22 @@ import {
   BookOpenText,
   CalendarBlank,
   CaretDown,
+  ChartBar,
+  ChatsCircle,
   CheckCircle,
   Database,
+  Fire,
   Funnel,
+  Gauge,
+  Moon,
+  SquaresFour,
+  Sun,
   Warning,
   X
 } from '@phosphor-icons/react';
 import { U } from '../shared/utils.js';
-import { aggregate, normalizeNumber, rangeLabel, SourceIdentity } from './view-utils.jsx';
+import { aggregate, normalizeNumber, SourceIdentity } from './view-utils.jsx';
+import { initTheme, setTheme } from './theme.js';
 import Overview from './views/Overview.jsx';
 import ActivityView from './views/Activity.jsx';
 import UsageView from './views/Usage.jsx';
@@ -20,14 +28,15 @@ import QuotaView from './views/Quota.jsx';
 import './styles.css';
 
 const NAV_ITEMS = [
-  { id: 'overview', label: '概览' },
-  { id: 'activity', label: '活跃度' },
-  { id: 'usage', label: '用量拆解' },
-  { id: 'sessions', label: '会话' },
-  { id: 'quota', label: '额度' }
+  { id: 'overview', label: '概览', icon: SquaresFour },
+  { id: 'activity', label: '活跃度', icon: Fire },
+  { id: 'usage', label: '用量拆解', icon: ChartBar },
+  { id: 'sessions', label: '会话', icon: ChatsCircle },
+  { id: 'quota', label: '额度', icon: Gauge }
 ];
 
 const RANGE_OPTIONS = [
+  { id: 'today', label: '今天', days: 1 },
   { id: '7d', label: '过去 7 天', days: 7 },
   { id: '14d', label: '过去 14 天', days: 14 },
   { id: '30d', label: '过去 30 天', days: 30 },
@@ -197,17 +206,25 @@ function Dashboard({
 }) {
   const [activeView, setActiveView] = useState('overview');
   const [rangeId, setRangeId] = useState('30d');
+  const [customRange, setCustomRange] = useState(null); // { start, end } | null
   const [selectedSources, setSelectedSources] = useState(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const [theme, setThemeState] = useState(() => initTheme());
   const toastTimer = useRef(null);
 
   const allDates = useMemo(() => Array.from(new Set(data.daily.map(row => row.usageDate).filter(Boolean))).sort(), [data.daily]);
   const firstDate = allDates[0] || U.daysAgo(0);
   const lastDate = allDates[allDates.length - 1] || U.daysAgo(0);
-  const range = RANGE_OPTIONS.find(option => option.id === rangeId) || RANGE_OPTIONS[2];
-  const startDate = range.days ? U.addDays(lastDate, -(range.days - 1)) : firstDate;
-  const endDate = lastDate;
+  const range = RANGE_OPTIONS.find(option => option.id === rangeId) || RANGE_OPTIONS[3];
+  const startDate = customRange ? customRange.start : (range.days ? U.addDays(lastDate, -(range.days - 1)) : firstDate);
+  const endDate = customRange ? customRange.end : lastDate;
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    setThemeState(next);
+  };
   const sources = useMemo(() => Array.from(new Set(data.daily.map(row => row.source).filter(Boolean))).sort(), [data.daily]);
 
   const filteredDaily = useMemo(() => data.daily.filter(row =>
@@ -276,53 +293,75 @@ function Dashboard({
     sessionAggregates: filteredSessionAggregates,
     sources,
     selectedSources,
-    announce
+    announce,
+    theme
   };
 
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <aside className="sidebar">
         <button className="brand" onClick={() => changeView('overview')} aria-label="返回概览">
           <span className="brand-mark">TS</span>
-          <span><strong>Token Studio</strong><small>个人 AI Token 消耗看板</small></span>
+          <span><strong>Token Studio</strong><small>AI Token 看板</small></span>
         </button>
-
-        <nav className="main-nav" aria-label="主导航">
-          {NAV_ITEMS.map(item => (
-            <button
-              key={item.id}
-              className={activeView === item.id ? 'active' : ''}
-              onClick={() => changeView(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+        <nav aria-label="主导航" style={{ display: 'contents' }}>
+          {NAV_ITEMS.map(item => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={`nav-item ${activeView === item.id ? 'active' : ''}`}
+                onClick={() => changeView(item.id)}
+                aria-current={activeView === item.id ? 'page' : undefined}
+              >
+                <Icon size={17} />{item.label}
+              </button>
+            );
+          })}
         </nav>
+        <div className="sidebar-spacer" />
+        <a className="nav-item" href="/review"><BookOpenText size={17} />复盘</a>
+        <button className="nav-item" onClick={toggleTheme} aria-label="切换主题">
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}{theme === 'dark' ? '亮色模式' : '暗色模式'}
+        </button>
+      </aside>
 
-        <div className="top-actions">
+      <div className="content-area">
+        <header className="topbar">
           <div className="sync-status" title={collectStatus?.message || ''}>
             <span className={collectStatus?.type === 'error' ? 'error' : ''} />
             最后同步 <strong>{lastSync}</strong>
           </div>
-          <a className="outline-button review-link" href="/review"><BookOpenText size={17} />复盘</a>
           <button className="primary" disabled={collecting || refreshing} onClick={onCollect}>
             <Database size={17} />{collecting ? '采集中' : '采集'}
           </button>
           <button className="outline-button" disabled={refreshing || collecting} onClick={onRefresh}>
             <ArrowsClockwise size={17} className={refreshing ? 'spin' : ''} />刷新
           </button>
-        </div>
-      </header>
+        </header>
 
-      <div className="command-row">
+        <div className="command-row">
         <div className="range-wrap">
           <CalendarBlank size={18} />
-          <select value={rangeId} onChange={event => setRangeId(event.target.value)} aria-label="时间范围">
+          <select
+            value={customRange ? 'custom' : rangeId}
+            onChange={event => {
+              if (event.target.value === 'custom') return;
+              setCustomRange(null);
+              setRangeId(event.target.value);
+            }}
+            aria-label="时间范围"
+          >
             {RANGE_OPTIONS.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+            {customRange && <option value="custom">自定义区间</option>}
           </select>
           <CaretDown size={14} aria-hidden="true" />
         </div>
-        <div className="date-chip">{rangeLabel(startDate, endDate, rangeId)}</div>
+        <div className="date-inputs">
+          <input type="date" value={startDate} max={endDate} onChange={event => event.target.value && setCustomRange({ start: event.target.value, end: endDate })} aria-label="开始日期" />
+          <span>~</span>
+          <input type="date" value={endDate} min={startDate} onChange={event => event.target.value && setCustomRange({ start: startDate, end: event.target.value })} aria-label="结束日期" />
+        </div>
         <div className="filter-anchor">
           <button className="outline-button" onClick={() => setFiltersOpen(open => !open)} aria-expanded={filtersOpen}>
             <Funnel size={17} />筛选
@@ -342,23 +381,24 @@ function Dashboard({
           )}
         </div>
         <span className="result-count">{filteredDaily.length.toLocaleString('zh-CN')} 条日聚合记录</span>
+        </div>
+
+        {activeView === 'overview' && <Overview {...common} />}
+        {activeView === 'activity' && <ActivityView {...common} hourlyError={hourlyError} />}
+        {activeView === 'usage' && <UsageView {...common} />}
+        {activeView === 'sessions' && (
+          <SessionsView
+            {...common}
+            timeRows={timeRows}
+            fallbackSessions={data.sessions}
+            startDate={startDate}
+            endDate={endDate}
+          />
+        )}
+        {activeView === 'quota' && <QuotaView {...common} />}
+
+        {toast && <div className="toast" role="status"><CheckCircle size={18} weight="fill" />{toast}</div>}
       </div>
-
-      {activeView === 'overview' && <Overview {...common} />}
-      {activeView === 'activity' && <ActivityView {...common} hourlyError={hourlyError} />}
-      {activeView === 'usage' && <UsageView {...common} />}
-      {activeView === 'sessions' && (
-        <SessionsView
-          {...common}
-          timeRows={timeRows}
-          fallbackSessions={data.sessions}
-          startDate={startDate}
-          endDate={endDate}
-        />
-      )}
-      {activeView === 'quota' && <QuotaView {...common} />}
-
-      {toast && <div className="toast" role="status"><CheckCircle size={18} weight="fill" />{toast}</div>}
     </div>
   );
 }
