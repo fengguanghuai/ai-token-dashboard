@@ -460,6 +460,13 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
   const showMatrix = matrix.slice(-28);
   const max = Math.max(...showMatrix.flat().map(cell => cell.tokens), 1);
 
+  // Hour-of-day marginal distribution across the shown window
+  const hourTotals = Array.from({length: 24}, (_, h) =>
+    showMatrix.reduce((s, row) => s + row[h].tokens, 0)
+  );
+  const hourMax = Math.max(...hourTotals, 1);
+  const peakHourIndex = hourTotals.indexOf(Math.max(...hourTotals));
+
   const heatLevel = (value) => {
     if (value <= 0) return 0;
     const intensity = Math.pow(value / max, 0.55);
@@ -544,8 +551,8 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
               className="heatmap-grid"
               aria-busy={loading}
               style={{
-                gridTemplateColumns: '48px repeat(24, 13px)',
-                gridTemplateRows: `16px repeat(${showDates.length}, 13px)`
+                gridTemplateColumns: '48px repeat(24, minmax(13px, 1fr))',
+                gridTemplateRows: `16px repeat(${showDates.length}, 14px) 10px 30px`
               }}>
               <div/>
               {HOURS_LABELS.map((h, i) => (
@@ -581,6 +588,17 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
                     );
                   })}
                 </Fragment>
+              ))}
+
+              <div className="heat-row-label" style={{gridRow: showDates.length + 3, gridColumn: 1}}>时段</div>
+              {hourTotals.map((v, hi) => (
+                <div
+                  key={`hb-${hi}`}
+                  className="heat-hour-bar"
+                  style={{gridRow: showDates.length + 3, gridColumn: hi + 2}}
+                  title={`${String(hi).padStart(2, '0')}:00 · ${U.compactCN(v)} tokens`}>
+                  <div style={{height: v ? `${Math.max(8, (v / hourMax) * 100)}%` : 0}}/>
+                </div>
               ))}
 
               {activeCell && (
@@ -630,6 +648,11 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
               <span>峰值日期</span>
               <strong>{peakDay.date === '—' ? '—' : peakDay.date.slice(5)}</strong>
               <small>{U.compactCN(peakDay.total)} tokens</small>
+            </div>
+            <div className="heat-stat" style={{gridColumn: '1 / -1'}}>
+              <span>高峰时段</span>
+              <strong>{String(peakHourIndex).padStart(2, '0')}:00</strong>
+              <small>{U.compactCN(hourTotals[peakHourIndex])} tokens</small>
             </div>
           </div>
 
