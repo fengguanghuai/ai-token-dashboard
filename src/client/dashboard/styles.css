@@ -326,62 +326,35 @@ button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible
 .share-track span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .driver-share { color: var(--muted); text-align: right; font-size: 9.5px; }
 
-/* ---------- Legacy status rail (removed in overview rebuild) ---------- */
-.status-rail { min-height: 822px; overflow: hidden; }
-.rail-title { height: 68px; display: flex; align-items: baseline; justify-content: space-between; padding: 20px 20px 0; border-bottom: 1px solid var(--border); }
-.rail-title h2 { margin: 0; font-size: 15px; font-weight: 680; }
-.rail-title span { color: var(--subtle); font-size: 10.5px; }
-.today-block, .forecast-block, .activity-block, .quota-summary-block, .attention-block { padding: 15px 20px; border-bottom: 1px solid var(--border); }
-.today-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.today-grid > div { min-width: 0; min-height: 70px; display: grid; align-content: center; gap: 4px; padding: 10px 12px; }
-.today-grid > div:nth-child(odd) { border-right: 1px solid var(--border); }
-.today-grid > div:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
-.today-grid span { color: var(--muted); font-size: 9.5px; }
-.today-grid strong { font-size: 15px; font-weight: 670; }
-.today-grid small { color: var(--muted); font-size: 9px; }
-.rail-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; }
-.rail-section-head > span { color: var(--muted); font-size: 10.5px; }
-.forecast-value { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-top: 14px; }
-.forecast-value strong { font-size: 21px; font-weight: 680; letter-spacing: -.025em; }
-.forecast-value span, .forecast-meta { color: var(--muted); font-size: 9.5px; }
-.forecast-block progress, .compact-quota-row progress, .quota-window progress { appearance: none; width: 100%; border: 0; overflow: hidden; border-radius: 99px; background: var(--chart-grid); }
-.forecast-block progress { height: 8px; margin: 11px 0 6px; }
-.forecast-block progress::-webkit-progress-bar, .compact-quota-row progress::-webkit-progress-bar, .quota-window progress::-webkit-progress-bar { background: var(--chart-grid); }
-.forecast-block progress::-webkit-progress-value, .quota-window progress::-webkit-progress-value { background: var(--accent); border-radius: 99px; }
-.forecast-block progress::-moz-progress-bar, .quota-window progress::-moz-progress-bar { background: var(--accent); border-radius: 99px; }
-.forecast-meta { display: flex; justify-content: space-between; }
-.activity-block { padding-bottom: 12px; }
-.mini-bars { height: 82px; display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; gap: 8px; margin-top: 8px; }
-.mini-bars > div { height: 78px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; }
-.mini-bars span { width: min(22px, 72%); min-height: 4px; border-radius: 4px 4px 2px 2px; background: var(--accent-soft); }
-.mini-bars > div:last-child span { background: var(--accent); }
-.mini-bars small { color: var(--subtle); font-size: 8px; }
-.compact-quota-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; padding: 12px 0 10px; border-bottom: 1px solid var(--border); }
-.compact-quota-row:last-child { border-bottom: 0; padding-bottom: 0; }
-.compact-quota-title { min-width: 0; display: flex; align-items: center; gap: 8px; }
-.compact-quota-title img { width: 16px; height: 16px; object-fit: contain; }
-.compact-quota-title > span { min-width: 0; display: grid; gap: 2px; }
-.compact-quota-title strong { font-size: 10.5px; }
-.compact-quota-title small { color: var(--muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.compact-quota-value { display: flex; align-items: baseline; gap: 4px; }
-.compact-quota-value strong { font-size: 12px; }
-.compact-quota-value span { color: var(--muted); font-size: 9px; }
-.compact-quota-row progress { grid-column: 1 / -1; height: 5px; }
-.compact-quota-row progress::-webkit-progress-value { background: #8b5cf6; border-radius: 99px; }
-.compact-quota-row progress::-moz-progress-bar { background: #8b5cf6; border-radius: 99px; }
-.attention-block { padding-bottom: 8px; }
-.attention-row { min-height: 54px; display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
-.attention-row:last-child { border-bottom: 0; }
-.attention-row > span { min-width: 0; display: grid; gap: 2px; }
-.attention-row strong { font-size: 10.5px; }
-.attention-row small { overflow: hidden; color: var(--muted); font-size: 9.5px; text-overflow: ellipsis; white-space: nowrap; }
+/* ---------- Overview: KPI band + tool cards ---------- */
+.kpi-band { display: grid; gap: 10px; grid-template-columns: repeat(5, 1fr); }
+.kpi-band.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.kpi-band.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.quota-kpi img { width: 18px; height: 18px; object-fit: contain; }
+.quota-kpi-bar { height: 4px; border-radius: 2px; background: var(--chart-grid); overflow: hidden; margin: 2px 0 8px; }
+.quota-kpi-bar span { display: block; height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent), #8b5cf6); }
+.trend-panel { position: relative; }
+.trend-measure { position: absolute; top: 15px; right: 56px; z-index: 2; }
+.tool-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.tool-card { min-width: 0; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px; display: flex; flex-direction: column; gap: 7px; color: var(--text); transition: border-color .15s ease, transform .15s ease; }
+.tool-card:not(:disabled):hover { border-color: var(--accent); transform: translateY(-1px); }
+.tool-card:disabled { cursor: default; }
+.tool-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tool-card-head img { width: 18px; height: 18px; object-fit: contain; flex-shrink: 0; }
+.tool-card-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tool-card-go { margin-left: auto; flex-shrink: 0; color: var(--muted); }
+.tool-card-value { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tool-card-value strong { font-size: 19px; letter-spacing: -.02em; }
+.tool-card-value span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.tool-card-bar { height: 4px; border-radius: 2px; background: var(--chart-grid); overflow: hidden; }
+.tool-card-bar span { display: block; height: 100%; border-radius: 2px; }
+.tool-card small { color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .danger { color: var(--bad); }
 .blue-icon { color: var(--accent); }
-.data-health-row { min-height: 62px; display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; padding: 11px 20px; color: var(--good); }
-.data-health-row > span { display: grid; gap: 2px; }
-.data-health-row strong { color: var(--text); font-size: 10.5px; }
-.data-health-row small { color: var(--muted); font-size: 9.5px; }
-.data-health-row > svg:last-child { color: var(--subtle); }
+.quota-window progress { appearance: none; width: 100%; border: 0; overflow: hidden; border-radius: 99px; background: var(--chart-grid); }
+.quota-window progress::-webkit-progress-bar { background: var(--chart-grid); }
+.quota-window progress::-webkit-progress-value { background: var(--accent); border-radius: 99px; }
+.quota-window progress::-moz-progress-bar { background: var(--accent); border-radius: 99px; }
 
 /* ---------- Activity view ---------- */
 .activity-metrics { margin-bottom: 0; }

@@ -278,6 +278,13 @@ function Dashboard({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const inspectSource = useCallback(source => {
+    setSelectedSources(new Set([source]));
+    setActiveView('usage');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    announce(`已聚焦 ${source}`);
+  }, [announce]);
+
   const common = {
     daily: filteredDaily,
     allDaily: sourceFilteredDaily,
@@ -383,7 +390,7 @@ function Dashboard({
         <span className="result-count">{filteredDaily.length.toLocaleString('zh-CN')} 条日聚合记录</span>
         </div>
 
-        {activeView === 'overview' && <Overview {...common} />}
+        {activeView === 'overview' && <Overview {...common} onInspectSource={inspectSource} />}
         {activeView === 'activity' && <ActivityView {...common} hourlyError={hourlyError} />}
         {activeView === 'usage' && <UsageView {...common} />}
         {activeView === 'sessions' && (
