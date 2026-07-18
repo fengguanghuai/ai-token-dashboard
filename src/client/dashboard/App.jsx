@@ -475,7 +475,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         <div className="col-6">
           <TopModels rows={filtered} onDrillModel={r => setDrill({ kind: 'model', row: r })} />
         </div>
-        <div className="col-3" style={{ gridColumn: 'span 3' }}>
+        <div className="col-3">
           <Gauge
             rate={totals.cacheHitRate}
             cacheRead={totals.cacheReadTokens}
@@ -485,7 +485,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
             savedUSD={totals.cacheSavedUSD}
             hitRateSeries={hitRateSeries} />
         </div>
-        <div className="col-3" style={{ gridColumn: 'span 3' }}>
+        <div className="col-3">
           <GrowthPanel totalsByDay={dailyTotalsByDay} />
         </div>
 

@@ -923,6 +923,7 @@ button, input, select { font-family: inherit; color: inherit; }
   gap: 16px;
 }
 
+.col-3 { grid-column: span 3; }
 .col-4 { grid-column: span 4; }
 .col-5 { grid-column: span 5; }
 .col-6 { grid-column: span 6; }
@@ -1775,4 +1776,5 @@ table.dt tbody tr.selected { background: oklch(0.97 0.02 265); }
   .col-8 { grid-column: span 12; }
   .col-4 { grid-column: span 12; }
   .col-6 { grid-column: span 12; }
+  .col-3 { grid-column: span 12; }
 }
