@@ -193,6 +193,24 @@ export function calculateCost(model, tokens, pricingData, provider = null, optio
   );
 }
 
+/**
+ * Estimated dollars saved by prompt caching: what the same request volume
+ * would have cost with every cached token billed at the full input rate,
+ * minus the actual estimated cost. 0 when pricing is unknown.
+ */
+export function calculateCacheSavings(model, tokens, pricingData, provider = null) {
+  const { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, reasoning = 0 } = tokens;
+  if (!cacheRead && !cacheWrite) return 0;
+  const uncached = calculateCost(
+    model,
+    { input: input + cacheRead + cacheWrite, output, reasoning },
+    pricingData,
+    provider
+  );
+  const actual = calculateCost(model, tokens, pricingData, provider);
+  return Math.max(0, uncached - actual);
+}
+
 function lookupPricingCached(model, pricingData, provider) {
   if (!pricingData || typeof pricingData !== 'object') {
     return lookupPricing(model, pricingData, provider);
