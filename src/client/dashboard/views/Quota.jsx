@@ -55,7 +55,7 @@ function QuotaProviderCard({ provider }) {
   const windows = provider.data.windows || [];
   return (
     <article className="quota-provider-card">
-      <div className="provider-head"><div><img src={provider.logo} alt="" /><span><strong>{provider.name}</strong><small>{provider.data.account?.plan || '当前账户'}</small></span></div>{provider.data.ok ? <span className="status-pill ok">已连接</span> : <span className="status-pill error">读取失败</span>}</div>
+      <div className="provider-head"><div><img src={provider.logo} alt="" className={provider.logoClass} /><span><strong>{provider.name}</strong><small>{provider.data.account?.plan || '当前账户'}</small></span></div>{provider.data.ok ? <span className="status-pill ok">已连接</span> : <span className="status-pill error">读取失败</span>}</div>
       {windows.length ? windows.map(window => {
         const used = Math.round(normalizeNumber(window.utilization) * 100);
         return <div className="quota-window" key={window.name}><div><strong>{QUOTA_WINDOW_LABELS[window.name] || window.name}</strong><span>{used}% 已使用</span></div><progress value={used} max="100" /><small>{formatReset(window.resetsAt)}</small></div>;

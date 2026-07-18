@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CaretRight, Coins, CurrencyDollar, DownloadSimple, Lightning } from '@phosphor-icons/react';
 import { U } from '../../shared/utils.js';
-import { sourceIcon, sourceIconScale } from '../source-icons.js';
+import { sourceIcon, sourceIconScale, sourceIconClass } from '../source-icons.js';
 import { useChart, normalizeNumber, formatReset, quotaProvidersFrom, exportDaily, MetricCard } from '../view-utils.jsx';
 import { chartVars } from '../theme.js';
 
@@ -36,7 +36,7 @@ function QuotaKpi({ provider }) {
   const used = Math.round(normalizeNumber(window.utilization) * 100);
   return (
     <article className="metric-card quota-kpi">
-      <div className="metric-card-head"><span>{provider.name} 额度</span><img src={provider.logo} alt="" /></div>
+      <div className="metric-card-head"><span>{provider.name} 额度</span><img src={provider.logo} alt="" className={provider.logoClass} /></div>
       <div className="metric-value"><strong>{100 - used}%</strong><span>剩余</span></div>
       <div className="quota-kpi-bar"><span style={{ width: `${used}%` }} /></div>
       <div className="metric-foot"><span>{formatReset(window.resetsAt)}</span></div>
@@ -144,16 +144,16 @@ function ToolCards({ daily, onInspectSource }) {
       {breakdown.map(item => {
         const icon = sourceIcon(item.source);
         return (
-          <button key={item.source} className="tool-card" disabled={item.aggregated} onClick={() => onInspectSource(item.source)}>
-            <div className="tool-card-head">
+          <button key={item.source} className="source-card" disabled={item.aggregated} onClick={() => onInspectSource(item.source)}>
+            <div className="source-card-head">
               {icon
-                ? <img src={icon} alt="" style={{ transform: `scale(${sourceIconScale(item.source)})` }} />
+                ? <img src={icon} alt="" className={sourceIconClass(item.source)} style={{ transform: `scale(${sourceIconScale(item.source)})` }} />
                 : <span className="source-dot" style={{ background: U.getSourceColor(item.source) }} />}
               <strong>{item.source}</strong>
-              {!item.aggregated && <CaretRight size={14} className="tool-card-go" />}
+              {!item.aggregated && <CaretRight size={14} className="source-card-go" />}
             </div>
-            <div className="tool-card-value num"><strong>{U.compactCN(item.totalTokens)}</strong><span>{U.fmtUS.format(item.costUSD)} · {item.share.toFixed(1)}%</span></div>
-            <div className="tool-card-bar"><span style={{ width: `${Math.max(1, item.share)}%`, background: U.getSourceColor(item.source) }} /></div>
+            <div className="source-card-value num"><strong>{U.compactCN(item.totalTokens)}</strong><span>{U.fmtUS.format(item.costUSD)} · {item.share.toFixed(1)}%</span></div>
+            <div className="source-card-bar"><span style={{ width: `${Math.max(1, item.share)}%`, background: U.getSourceColor(item.source) }} /></div>
             <small>{item.topModel ? `Top 模型 ${item.topModel}` : '多个来源聚合'}</small>
           </button>
         );

@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
-import { sourceIcon, sourceIconScale } from './source-icons.js';
+import { sourceIcon, sourceIconScale, sourceIconClass } from './source-icons.js';
 import claudeLogo from './icons/claude.svg';
 import gptLogo from './icons/gpt.svg';
 
@@ -109,8 +109,8 @@ export function formatReset(iso) {
 export function quotaProvidersFrom(quota) {
   if (!quota || quota.disabled) return [];
   return [
-    { id: 'claude', name: 'Claude', logo: claudeLogo, data: quota.claude },
-    { id: 'codex', name: 'Codex', logo: gptLogo, data: quota.codex }
+    { id: 'claude', name: 'Claude', logo: claudeLogo, logoClass: '', data: quota.claude },
+    { id: 'codex', name: 'Codex', logo: gptLogo, logoClass: 'logo-invert-dark', data: quota.codex }
   ].filter(provider => provider.data && ((provider.data.ok && provider.data.windows?.length) || provider.data.status !== 'no_credentials'));
 }
 
@@ -135,7 +135,7 @@ export function SourceIdentity({ source }) {
   return (
     <span className="source-identity">
       {icon
-        ? <img src={icon} alt="" style={{ transform: `scale(${sourceIconScale(source)})` }} />
+        ? <img src={icon} alt="" className={sourceIconClass(source)} style={{ transform: `scale(${sourceIconScale(source)})` }} />
         : <span className="source-dot" style={{ background: U.getSourceColor(source) }} />}
       <span>{source}</span>
     </span>

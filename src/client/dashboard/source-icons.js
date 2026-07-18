@@ -19,6 +19,9 @@ const SOURCE_ICON = {
 // visually smaller; nudge them up so all the logos look the same weight.
 const SOURCE_ICON_SCALE = { OpenClaw: 1.4 };
 
+// Monochrome dark logos need inverting on dark surfaces.
+const SOURCE_ICON_DARK_INVERT = new Set(['Codex CLI', 'Hermes Agent', 'OpenCode']);
+
 function normalizeSource(source) {
   return String(source || '').replace(/\s*\(JS\)$/, '');
 }
@@ -32,4 +35,9 @@ export function sourceIcon(source) {
 /** Per-source visual scale so logos read at a consistent size. */
 export function sourceIconScale(source) {
   return SOURCE_ICON_SCALE[source] || SOURCE_ICON_SCALE[normalizeSource(source)] || 1;
+}
+
+/** Extra class for logos that must invert on the dark theme. */
+export function sourceIconClass(source) {
+  return SOURCE_ICON_DARK_INVERT.has(normalizeSource(source)) ? 'logo-invert-dark' : '';
 }
