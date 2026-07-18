@@ -422,10 +422,6 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
           sub="vs 上周期"
           delta={U.deltaPct(totals.totalTokens, compareData.totals?.totalTokens)}
           sparkValues={sparkValues} sparkColor="oklch(0.55 0.16 265)" />
-        <KPI label="Input" value={U.compactCN(totals.inputTokens)}
-          sub="输入"
-          delta={U.deltaPct(totals.inputTokens, compareData.totals?.inputTokens)}
-          sparkValues={sparkBy('inputTokens')} sparkColor="oklch(0.62 0.13 240)" />
         <KPI label="Output" value={U.compactCN(totals.outputTokens)}
           sub="生成"
           delta={U.deltaPct(totals.outputTokens, compareData.totals?.outputTokens)}
@@ -434,10 +430,6 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
           sub={`命中 ${totals.cacheHitRate.toFixed(0)}%`}
           delta={U.deltaPct(totals.cacheTokens, compareData.totals?.cacheTokens)}
           sparkValues={sparkBy('cacheReadTokens')} sparkColor="oklch(0.65 0.11 200)" />
-        <KPI label="Reasoning" value={U.compactCN(totals.reasoningTokens)}
-          sub="推理"
-          delta={U.deltaPct(totals.reasoningTokens, compareData.totals?.reasoningTokens)}
-          sparkValues={sparkBy('reasoningOutputTokens')} sparkColor="oklch(0.65 0.12 150)" />
         <KPI label="估算费用" value={U.fmtUS.format(totals.costUSD)}
           sub="累计"
           delta={U.deltaPct(totals.costUSD, compareData.totals?.costUSD)}

@@ -142,11 +142,11 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
       type: 'line',
       smooth: 0.3,
       symbol: 'none',
-      lineStyle: { width: 1.6, color: 'oklch(0.55 0.005 80)', type: 'dashed' },
-      itemStyle: { color: 'oklch(0.55 0.005 80)' },
-      ...stableLineState(1.6),
+      lineStyle: { width: 1.2, color: 'oklch(0.72 0.005 80)', type: 'dashed', opacity: 0.55 },
+      itemStyle: { color: 'oklch(0.72 0.005 80)' },
+      ...stableLineState(1.2),
       data: dates.map((_, i) => compareSeries[i] || 0),
-      z: 5
+      z: 3
     });
   }
 
@@ -282,6 +282,10 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
   }).sort((a, b) => b.value - a.value);
 
   const sum = data.reduce((s, d) => s + d.value, 0);
+  // Tiny slices (<0.5%) get forced to minAngle and collapse the ring's rounded
+  // caps into overlapping dots at the 12-o'clock seam. Drop them from the drawn
+  // arc — they stay in the legend below so no information is lost.
+  const pieData = data.filter(d => sum > 0 && d.value / sum >= 0.005);
 
   const option = {
     backgroundColor: 'transparent',
@@ -333,7 +337,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       blur: {
         itemStyle: { opacity: 1 }
       },
-      data: data.map(d => ({
+      data: pieData.map(d => ({
         name: d.name,
         value: d.value,
         itemStyle: { color: d.color, opacity: focused && focused !== d.name ? 0.25 : 1 },
@@ -406,7 +410,7 @@ function TopModels({ rows, onDrillModel }) {
     m.cost  += r.costUSD;
     m.count += 1;
   }
-  const list = Array.from(byModel.values()).sort((a, b) => b.total - a.total).slice(0, 8);
+  const list = Array.from(byModel.values()).sort((a, b) => b.total - a.total).slice(0, 5);
   const max = list[0]?.total || 1;
 
   return (
@@ -693,8 +697,13 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate }) {
   const C = Math.PI * 70;
   const dash = (r / 100) * C;
 
+  const cacheTotal = (cacheRead || 0) + (cacheCreation || 0);
+  const readPct = cacheTotal ? (cacheRead / cacheTotal) * 100 : 0;
+  const createPct = cacheTotal ? (cacheCreation / cacheTotal) * 100 : 0;
+  const cacheOfTotalPct = total ? (cacheTotal / total) * 100 : 0;
+
   return (
-    <div className="panel">
+    <div className="panel cache-card">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">缓存命中率</h2>
@@ -727,9 +736,31 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate }) {
             </div>
           </div>
         </div>
-        <div className="gauge-meta">
-          <span>读取 <b>{U.compactCN(cacheRead)}</b></span>
-          <span>创建 <b>{U.compactCN(cacheCreation)}</b></span>
+      </div>
+
+      <div className="cache-metrics">
+        <div className="cache-metric">
+          <div className="cache-metric-head">
+            <span className="cache-metric-label">读取 vs 创建</span>
+            <span className="cache-metric-val">{readPct.toFixed(0)}% / {createPct.toFixed(0)}%</span>
+          </div>
+          <div className="cache-track cache-track-split">
+            <div className="cache-fill cache-fill-read" style={{ width: `${readPct}%` }} />
+          </div>
+          <div className="cache-metric-foot">
+            <span><i className="cache-key cache-key-read" />读取 <b>{U.compactCN(cacheRead)}</b></span>
+            <span><i className="cache-key cache-key-create" />创建 <b>{U.compactCN(cacheCreation)}</b></span>
+          </div>
+        </div>
+
+        <div className="cache-metric">
+          <div className="cache-metric-head">
+            <span className="cache-metric-label">缓存占总 Token</span>
+            <span className="cache-metric-val">{cacheOfTotalPct.toFixed(1)}%</span>
+          </div>
+          <div className="cache-track">
+            <div className="cache-fill cache-fill-total" style={{ width: `${cacheOfTotalPct}%` }} />
+          </div>
         </div>
       </div>
     </div>
