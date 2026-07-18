@@ -253,6 +253,30 @@ function projectLabel(s) {
   return s.projectPath || s.sessionId;
 }
 
+// Per-source aggregation for the overview tool cards
+function sourceBreakdown(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const key = r.source || '未标记';
+    if (!map.has(key)) map.set(key, { source: key, totalTokens: 0, costUSD: 0, models: new Map() });
+    const item = map.get(key);
+    const total = Number(r.totalTokens) || 0;
+    item.totalTokens += total;
+    item.costUSD += Number(r.costUSD) || 0;
+    if (r.model) item.models.set(r.model, (item.models.get(r.model) || 0) + total);
+  }
+  const grand = Array.from(map.values()).reduce((sum, item) => sum + item.totalTokens, 0);
+  return Array.from(map.values())
+    .map(item => ({
+      source: item.source,
+      totalTokens: item.totalTokens,
+      costUSD: item.costUSD,
+      share: grand ? (item.totalTokens / grand) * 100 : 0,
+      topModel: Array.from(item.models.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || null
+    }))
+    .sort((a, b) => b.totalTokens - a.totalTokens);
+}
+
 // Mix two oklch colors by t  via color-mix string
 function alpha(color, a) {
   return `color-mix(in oklab, ${color}, transparent ${100 - a * 100}%)`;
@@ -264,5 +288,5 @@ export const U = {
   compact, compactCN, pct, deltaPct, formatTs,
   localDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,
   filterDaily, filterTime, aggregateTotals, groupByDate, uniqueValues,
-  downloadCSV, projectLabel, alpha
+  downloadCSV, projectLabel, sourceBreakdown, alpha
 };
