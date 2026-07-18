@@ -1198,12 +1198,12 @@ button, input, select { font-family: inherit; color: inherit; }
   gap: 18px;
   font-size: 12px;
   color: var(--text-2);
-  margin-top: 2px;
+  margin: 2px 0 14px;
 }
 .cache-line b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 
 .cache-saved {
-  margin-top: 14px;
+  margin-top: auto;
   padding: 12px 14px;
   background: var(--surface-2);
   border: 1px solid var(--border-2);
@@ -1235,7 +1235,15 @@ button, input, select { font-family: inherit; color: inherit; }
   letter-spacing: 0.06em;
   margin-bottom: 4px;
 }
-.cache-trend .kpi-spark { display: block; width: 100%; height: 36px; }
+.cache-trend .kpi-spark {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 36px;
+  opacity: 1;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
 
 .cache-key {
   display: inline-block;

@@ -331,10 +331,10 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       read.set(r.usageDate, (read.get(r.usageDate) || 0) + (r.cacheReadTokens || 0));
       tot.set(r.usageDate, (tot.get(r.usageDate) || 0) + r.totalTokens);
     }
-    return dates.map(d => {
-      const t = tot.get(d) || 0;
-      return t ? ((read.get(d) || 0) / t) * 100 : 0;
-    });
+    // Only days with usage — a zero-usage day is not a 0% hit rate.
+    return dates
+      .filter(d => (tot.get(d) || 0) > 0)
+      .map(d => ((read.get(d) || 0) / tot.get(d)) * 100);
   }, [filtered, dates]);
 
   // ───── Sessions filtered ─────
