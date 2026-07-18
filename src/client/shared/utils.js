@@ -190,7 +190,7 @@ function filterTime(rows, f) {
 
 // Aggregate totals across rows
 function aggregateTotals(rows) {
-  let total = 0, inp = 0, out = 0, cacheRd = 0, cacheCr = 0, reason = 0, cost = 0;
+  let total = 0, inp = 0, out = 0, cacheRd = 0, cacheCr = 0, reason = 0, cost = 0, saved = 0;
   for (const r of rows) {
     total += r.totalTokens;
     inp   += r.inputTokens;
@@ -199,6 +199,7 @@ function aggregateTotals(rows) {
     cacheCr += r.cacheCreationTokens;
     reason += r.reasoningOutputTokens;
     cost  += r.costUSD;
+    saved += r.cacheSavedUSD || 0;
   }
   return {
     totalTokens: total,
@@ -209,6 +210,7 @@ function aggregateTotals(rows) {
     cacheTokens: cacheRd + cacheCr,
     reasoningTokens: reason,
     costUSD: cost,
+    cacheSavedUSD: saved,
     cacheHitRate: total ? (cacheRd / total) * 100 : 0
   };
 }
