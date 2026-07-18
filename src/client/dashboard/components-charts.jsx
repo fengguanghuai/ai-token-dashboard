@@ -259,10 +259,6 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
   }).sort((a, b) => b.value - a.value);
 
   const sum = data.reduce((s, d) => s + d.value, 0);
-  // Tiny slices (<0.5%) get forced to minAngle and collapse the ring's rounded
-  // caps into overlapping dots at the 12-o'clock seam. Drop them from the drawn
-  // arc — they stay in the legend below so no information is lost.
-  const pieData = data.filter(d => sum > 0 && d.value / sum >= 0.005);
 
   const option = {
     backgroundColor: 'transparent',
@@ -295,7 +291,6 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       label: { show: false },
       labelLine: { show: false },
       itemStyle: {
-        borderRadius: 8,
         borderColor: '#fff',
         borderWidth: 2,
         shadowBlur: 12,
@@ -314,7 +309,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       blur: {
         itemStyle: { opacity: 1 }
       },
-      data: pieData.map(d => ({
+      data: data.map(d => ({
         name: d.name,
         value: d.value,
         itemStyle: { color: d.color, opacity: focused && focused !== d.name ? 0.25 : 1 },
