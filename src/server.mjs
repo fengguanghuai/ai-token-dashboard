@@ -5,6 +5,7 @@ import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import { deleteTimeUsageForSource, openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
+import { calculateCacheSavings, loadPricing } from './pricing.mjs';
 import { queryQuota } from './quota.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
@@ -21,6 +22,9 @@ const staticDir = existsSync(resolve(process.cwd(), 'dist'))
   ? resolve(process.cwd(), 'dist')
   : resolve(process.cwd(), 'public');
 const db = openDb(process.env.DB_PATH);
+// Pricing data for serve-time cache-savings estimation. Same bundled cache
+// file the collector uses; savings silently degrade to 0 if it is missing.
+const pricingData = await loadPricing(resolve(process.cwd(), 'data', 'pricing-litellm.json'));
 let activeCollection = null;
 let collectionState = {
   status: 'idle',
@@ -112,7 +116,14 @@ function handleApi(req, url, res) {
       // Enrich daily rows with projectPath from session data
       daily: rawDaily.map(d => ({
         ...d,
-        projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null
+        projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null,
+        cacheSavedUSD: calculateCacheSavings(d.model, {
+          input: d.inputTokens,
+          output: d.outputTokens,
+          cacheRead: d.cacheReadTokens,
+          cacheWrite: d.cacheCreationTokens,
+          reasoning: d.reasoningOutputTokens
+        }, pricingData)
       })),
       sessions,
       // Normalize runs: strip newlines from messages, shorten device names
