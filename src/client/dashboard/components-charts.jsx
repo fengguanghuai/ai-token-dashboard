@@ -7,6 +7,7 @@ import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
 import { EChart } from '../shared/echart.jsx';
 import { Delta, Spark } from './components-top.jsx';
+import { sourceIcon, sourceIconScale } from './source-icons.js';
 
 // ───────────────────────────────────────────────────────────────
 // Trend chart — switchable bar/line/stacked + optional comparison
@@ -309,22 +310,28 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       blur: {
         itemStyle: { opacity: 1 }
       },
-      data: data.map(d => ({
-        name: d.name,
-        value: d.value,
-        itemStyle: { color: d.color, opacity: focused && focused !== d.name ? 0.25 : 1 },
-        emphasis: {
-          itemStyle: {
-            color: d.color,
-            opacity: 1,
-            borderColor: '#fff',
-            borderWidth: 2,
-            shadowBlur: 12,
-            shadowOffsetY: 3,
-            shadowColor: 'rgba(15, 23, 42, 0.16)'
+      data: data.map(d => {
+        // Rounded caps only on slices big enough to hold them — on tiny
+        // minAngle-forced slices the caps collapse into dots at the seam.
+        const borderRadius = sum && d.value / sum >= 0.03 ? 8 : 0;
+        return {
+          name: d.name,
+          value: d.value,
+          itemStyle: { color: d.color, borderRadius, opacity: focused && focused !== d.name ? 0.25 : 1 },
+          emphasis: {
+            itemStyle: {
+              color: d.color,
+              borderRadius,
+              opacity: 1,
+              borderColor: '#fff',
+              borderWidth: 2,
+              shadowBlur: 12,
+              shadowOffsetY: 3,
+              shadowColor: 'rgba(15, 23, 42, 0.16)'
+            }
           }
-        }
-      }))
+        };
+      })
     }]
   };
 
@@ -396,16 +403,18 @@ function TopModels({ rows, onDrillModel }) {
       </div>
       <div className="bars">
         {list.length === 0 && <div className="empty">当前筛选下无数据</div>}
-        {list.map(m => (
+        {list.map(m => {
+          const icon = sourceIcon(m.source);
+          return (
           <div key={m.model} className="bar-row" onClick={() => onDrillModel?.(m)}>
             <div className="bar-label">
-              <div className="model">{m.model}</div>
-              <div className="meta">
-                <span className="tag">
-                  <span className="tag-dot" style={{background: U.getSourceColor(m.source)}}/>
-                  {m.source}
-                </span>
-                <span>{m.count} 条记录</span>
+              <div className="bar-head" title={m.source}>
+                {icon
+                  ? <img className="bar-head-icon" src={icon} alt={m.source}
+                      style={{transform: `scale(${sourceIconScale(m.source)})`}}/>
+                  : <span className="tag-dot" style={{background: U.getSourceColor(m.source)}}/>}
+                <span className="model">{m.model}</span>
+                <span className="bar-count">{m.count} 条记录</span>
               </div>
               <div className="bar-track">
                 <div className="bar-fill"
@@ -420,7 +429,8 @@ function TopModels({ rows, onDrillModel }) {
               <small>{m.cost > 0 ? U.fmtUS.format(m.cost) : '—'}</small>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -510,12 +520,18 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
     const gridRect = grid.getBoundingClientRect();
     const cellRect = event.currentTarget.getBoundingClientRect();
     const dayTotal = byDate.get(date) || 0;
+    // Clamp inside the grid: an overflowing tooltip expands the scrollable
+    // area of .heatmap-scroll and pops a horizontal scrollbar on edge cells.
+    const half = 92;
+    const anchor = cellRect.left - gridRect.left + cellRect.width / 2;
+    const left = Math.min(Math.max(anchor, half), Math.max(half, gridRect.width - half));
     setActiveCell({
       date,
       hour,
       ...cell,
       dayTotal,
-      left: cellRect.left - gridRect.left + cellRect.width / 2,
+      left,
+      arrowShift: anchor - left,
       top: cellRect.top - gridRect.top
     });
   };
@@ -605,7 +621,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
                 <div
                   className="heat-tooltip"
                   role="tooltip"
-                  style={{left: activeCell.left, top: activeCell.top}}>
+                  style={{left: activeCell.left, top: activeCell.top, '--arrow-shift': `${activeCell.arrowShift || 0}px`}}>
                   <strong>{activeCell.date} · {String(activeCell.hour).padStart(2, '0')}:00</strong>
                   {activeCell.tokens > 0 ? (
                     <>

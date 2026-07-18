@@ -1121,14 +1121,25 @@ button, input, select { font-family: inherit; color: inherit; }
   color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.bar-label .meta {
+.bar-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.bar-head .model { flex-shrink: 1; }
+.bar-head-icon {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.bar-count {
   font-size: 11px;
   color: var(--muted);
-  display: flex; gap: 8px; align-items: center;
   white-space: nowrap;
-  overflow: hidden;
+  flex-shrink: 0;
 }
-.bar-label .meta > * { white-space: nowrap; flex-shrink: 0; }
 .bar-track {
   margin-top: 4px;
   height: 6px;
@@ -1372,7 +1383,7 @@ button, input, select { font-family: inherit; color: inherit; }
 .heat-tooltip::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: calc(50% + var(--arrow-shift, 0px));
   bottom: -5px;
   width: 8px;
   height: 8px;
