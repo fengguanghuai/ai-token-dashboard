@@ -253,7 +253,7 @@ async function dropSqliteColumn(db, tableName, columnName) {
   await db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
 }
 
-function nowExpression(driver) {
+export function nowExpression(driver) {
   if (driver === 'postgres') {
     return `to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
   }
@@ -261,7 +261,7 @@ function nowExpression(driver) {
   return `datetime('now')`;
 }
 
-function todayExpression(driver) {
+export function todayExpression(driver) {
   if (driver === 'postgres') return 'CURRENT_DATE::text';
   if (driver === 'mysql') return `DATE_FORMAT(CURRENT_DATE(), '%Y-%m-%d')`;
   return `date('now', 'localtime')`;
@@ -451,6 +451,6 @@ export function hourExpression(driver, column = 'event_time') {
   return `CAST(strftime('%H', ${column}, 'localtime') AS INTEGER)`;
 }
 
-function mysqlRowKey(...parts) {
+export function mysqlRowKey(...parts) {
   return createHash('sha256').update(parts.map(part => String(part ?? '')).join('\0')).digest('hex');
 }
