@@ -6,8 +6,9 @@ import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import {
   apiRowIdExpression, deleteTimeUsageForSource, hourExpression, openDb,
-  pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage
+  pruneCollectionRuns, recordRun
 } from './db.mjs';
+import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage } from './db-batch.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
 import { calculateCacheSavings, loadPricing } from './pricing.mjs';
 import { queryQuota } from './quota.mjs';
@@ -377,26 +378,29 @@ async function handleIngest(req, res) {
     const sessionRows = Array.isArray(payload.sessions) ? payload.sessions : [];
     const runRows = Array.isArray(payload.runs) ? payload.runs : [];
 
-    // A push carries the device's full current time-usage window per source, so
-    // replace each (device, source) wholesale — mirroring local collect — instead
-    // of only upserting, which would leave events that have since disappeared.
+    const fullRebuild = payload.mode !== 'incremental';
+
+    // 全量 push 携带设备完整时间窗,按 (device, source) 整体替换;
+    // 增量 push 只含新事件,只做 upsert,绝不删表。
     const timePairs = new Map();
-    for (const row of timeRows) {
-      if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
+    if (fullRebuild) {
+      for (const row of timeRows) {
+        if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
+      }
     }
 
     await db.transaction(async (tx) => {
-      for (const row of dailyRows) await upsertDaily(tx, row);
+      await batchUpsertDaily(tx, dailyRows);
       for (const row of timePairs.values()) await deleteTimeUsageForSource(tx, row.device, row.source);
-      for (const row of timeRows) await upsertTimeUsage(tx, row);
-      for (const row of sessionRows) await upsertSession(tx, row);
+      await batchUpsertTimeUsage(tx, timeRows);
+      await batchUpsertSession(tx, sessionRows);
       for (const row of runRows) await recordRun(tx, row);
     });
 
     // The hub stays up across many ingests; keep collection_runs bounded.
     if (runRows.length) await pruneCollectionRuns(db);
 
-    sendJson(res, { ok: true, daily: dailyRows.length, time: timeRows.length, sessions: sessionRows.length, runs: runRows.length });
+    sendJson(res, { ok: true, mode: fullRebuild ? 'full' : 'incremental', daily: dailyRows.length, time: timeRows.length, sessions: sessionRows.length, runs: runRows.length });
   } catch (error) {
     sendJson(res, { error: error.message }, 400);
   }
