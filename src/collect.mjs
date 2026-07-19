@@ -1,7 +1,9 @@
 import './load-env.mjs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
-import { deleteTimeUsageForSource, openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
+import { deleteTimeUsageForSource, openDb, recordRun } from './db.mjs';
+import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage, getTimeWatermark } from './db-batch.mjs';
+import { dedupeEventKeys, filterDailyRows, filterTimeRows, watermarkCutoff } from './incremental.mjs';
 import { loadPricing } from './pricing.mjs';
 import { tokenTotal } from './collectors/utils.mjs';
 
@@ -19,6 +21,7 @@ const device = args.device || hostname();
 const db = await openDb(args.db);
 const exportPayload = {
   device,
+  mode: args.full ? 'full' : 'incremental',
   collectedAt: new Date().toISOString(),
   daily: [],
   time: [],
@@ -66,35 +69,39 @@ async function collectLocal() {
     }
 
     const dailyRows = normalizeDailyRows(graphJson, device);
-    await runInTransaction(db, async (tx) => {
-      for (const row of dailyRows) await upsertDaily(tx, row);
-    });
-    exportPayload.daily.push(...dailyRows);
-
     const sessionRows = normalizeSessionRows(modelsJson, device);
+    // 先在全量批次上生成稳定 key,再做水位线过滤,保证 #n 序号跨次运行一致
+    const timeRows = dedupeEventKeys(normalizeTimeRows(eventsJson, device));
+
+    const watermark = args.full ? null : await getTimeWatermark(db, device, label);
+    const cutoff = watermarkCutoff(watermark);
+    const dailyToWrite = filterDailyRows(dailyRows, cutoff);
+    const timeToWrite = filterTimeRows(timeRows, cutoff);
+    const fullRebuild = args.full || !watermark;
+
     await runInTransaction(db, async (tx) => {
-      for (const row of sessionRows) await upsertSession(tx, row);
+      await batchUpsertDaily(tx, dailyToWrite);
+      await batchUpsertSession(tx, sessionRows);
+      // 全量重建才允许删表;增量路径老事件永不触碰(价格锁定语义)
+      if (fullRebuild) await deleteTimeUsageForSource(tx, device, label);
+      await batchUpsertTimeUsage(tx, timeToWrite);
     });
+    exportPayload.daily.push(...dailyToWrite);
     exportPayload.sessions.push(...sessionRows);
+    exportPayload.time.push(...timeToWrite);
 
-    const timeRows = normalizeTimeRows(eventsJson, device);
-    await runInTransaction(db, async (tx) => {
-      await deleteTimeUsageForSource(tx, device, label);
-      for (const row of timeRows) await upsertTimeUsage(tx, row);
-    });
-    exportPayload.time.push(...timeRows);
-
+    const message = `daily=${dailyToWrite.length}/${dailyRows.length}, time=${timeToWrite.length}/${timeRows.length}, workspace_model=${sessionRows.length}${fullRebuild ? ', full' : ''}`;
     const run = {
       device,
       source: label,
       status: dailyRows.length || sessionRows.length ? 'ok' : 'empty',
-      message: `daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}`,
+      message,
       collectedAt: exportPayload.collectedAt,
       command: `js-collector:${module}`
     };
     await recordRun(db, run);
     exportPayload.runs.push(run);
-    console.log(`[${label}] daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}`);
+    console.log(`[${label}] ${message}`);
   }
 
   if (anyError) process.exitCode = 1;
@@ -102,7 +109,7 @@ async function collectLocal() {
 
 function normalizeTimeRows(json, deviceName) {
   const events = Array.isArray(json?.events) ? json.events : [];
-  return events.map((entry, index) => {
+  return events.map((entry) => {
     const tokens = normalizeTokens(entry.tokens);
     const totalTokens = tokenTotal(tokens, entry.client);
     const eventTime = normalizeEventTime(entry.eventTime || entry.timestamp);
@@ -117,8 +124,7 @@ function normalizeTimeRows(json, deviceName) {
         eventTime,
         entry.sessionId || entry.workspaceKey || '',
         model,
-        totalTokens,
-        index
+        totalTokens
       ].join(':'),
       eventTime,
       usageDate,
@@ -249,6 +255,8 @@ function parseArgs(argv) {
       parsed.push = argv[++i];
     } else if (arg === '--token') {
       parsed.token = argv[++i];
+    } else if (arg === '--full') {
+      parsed.full = true;
     }
   }
   return parsed;
