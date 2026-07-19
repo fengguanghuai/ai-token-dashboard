@@ -236,6 +236,15 @@ npm run pricing:update
 | `--db` | `/path/to/db` | 覆盖 SQLite 路径 |
 | `--push` | `http://hub:4173/api/ingest` | 将采集数据推送到远程 hub |
 | `--token` | `your-secret-token` | 远程 hub 的 Bearer token |
+| `--full` | — | 全量重建：删除该设备远端事件后重传（见下） |
+
+默认为增量采集：只上传比远端水位线（该设备该来源最新事件时间）新的数据，历史事件与已锁定的历史成本不会被改写，对远程数据库（如 Supabase）每次只需几十次批量写入。如需全量重建（如采集器逻辑变更后），使用：
+
+```bash
+node src/collect.mjs --full
+```
+
+注意：`--full` 会删除该设备的远端事件并按当前价格重算历史成本。
 
 ---
 
