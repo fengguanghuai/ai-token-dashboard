@@ -48,7 +48,7 @@ Only the tools you actually have installed will produce data — others are sile
 
 ## Requirements
 
-- **Node.js ≥ 22.5.0** (uses the built-in `node:sqlite` module)
+- **Node.js ≥ 22.5.0** (the SQLite fallback uses the built-in `node:sqlite` module)
 
 ---
 
@@ -76,6 +76,28 @@ http://localhost:4173/review # Retrospective view
 ```
 
 Usage data is written to `data/usage.sqlite`. The `data/` directory is gitignored and stays local.
+
+### Shared multi-device database
+
+The project supports SQLite, PostgreSQL (including Supabase), and MySQL. Copy `.env.example` to an untracked `.env` and configure one shared connection:
+
+```bash
+# Supabase / PostgreSQL (prefer a Supabase Session pooler URL)
+DATABASE_URL=postgresql://user:password@host:5432/postgres?sslmode=require
+
+# Or MySQL 8+
+# DATABASE_URL=mysql://user:password@host:3306/ai_token_dashboard
+```
+
+Initialize a fresh database and migrate this machine's SQLite history:
+
+```bash
+npm run db:init
+npm run db:migrate -- --from data/usage.sqlite
+npm run db:check
+```
+
+Migration batch-upserts the three durable usage tables and verifies row counts, so it is safe to rerun. `collection_runs` is copied only when the target is empty to prevent duplicate operational logs. On other devices, configure the same `DATABASE_URL`, run `npm run db:init`, and collect normally. A project-level `$migrate-usage-database` skill is also included.
 
 ### Development
 
@@ -179,7 +201,11 @@ Notes:
 |---------------------|---------|-------------|
 | `PORT` | `4173` | HTTP server port |
 | `API_PORT` | `4173` | API server port used by `npm run dev` |
+| `DATABASE_URL` | _(unset)_ | PostgreSQL/Supabase or MySQL connection URL; takes precedence over SQLite |
+| `DB_DRIVER` | `sqlite` | Database driver when `DATABASE_URL` is unset |
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |
+| `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL connection pool size |
+| `DB_CONNECT_TIMEOUT_MS` | `10000` | Remote database connection timeout in milliseconds |
 | `INGEST_TOKEN` | _(unset)_ | If set, `/api/ingest` requires `Authorization: Bearer <token>` |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | Enable the built-in scheduled collector |
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | Scheduled collection interval in seconds, minimum 10 seconds |
@@ -253,7 +279,10 @@ src/
 ├── collect.mjs          # CLI entry point for data collection
 ├── dev.mjs              # Development mode: API server + Vite
 ├── server.mjs           # HTTP server + API
-├── db.mjs               # SQLite schema and upsert helpers
+├── db.mjs               # SQLite/PostgreSQL/MySQL adapter and upserts
+├── db-init.mjs          # Initialize the database schema
+├── db-migrate.mjs       # Migrate SQLite history
+├── db-check.mjs         # Check connectivity and row counts
 ├── pricing.mjs          # LiteLLM + OpenRouter pricing lookup and cost estimation
 ├── update-pricing.mjs   # Refresh local pricing caches
 ├── collector-config.mjs # Reads config/collectors.json and expands paths
@@ -272,6 +301,10 @@ src/
 data/
 ├── pricing-litellm.json     # Bundled LiteLLM pricing cache
 └── pricing-openrouter.json  # Bundled OpenRouter pricing cache
+db/
+├── schema.sqlite.sql        # SQLite initialization schema
+├── schema.postgres.sql      # PostgreSQL/Supabase initialization schema
+└── schema.mysql.sql         # MySQL initialization schema
 ```
 
 ---

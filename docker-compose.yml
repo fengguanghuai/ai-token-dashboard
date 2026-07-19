@@ -6,6 +6,11 @@ services:
     environment:
       PORT: "4173"
       INGEST_TOKEN: "${INGEST_TOKEN:?Set INGEST_TOKEN before starting the hub}"
+      DATABASE_URL: "${DATABASE_URL:-}"
+      DB_DRIVER: "${DB_DRIVER:-sqlite}"
+      DB_PATH: "${DB_PATH:-data/usage.sqlite}"
+      DB_POOL_SIZE: "${DB_POOL_SIZE:-10}"
+      DB_CONNECT_TIMEOUT_MS: "${DB_CONNECT_TIMEOUT_MS:-10000}"
       HOME: /collector-home
       SCHEDULED_COLLECT_ENABLED: "${SCHEDULED_COLLECT_ENABLED:-false}"
       SCHEDULED_COLLECT_INTERVAL_SECONDS: "${SCHEDULED_COLLECT_INTERVAL_SECONDS:-${COLLECT_INTERVAL_SECONDS:-300}}"

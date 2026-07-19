@@ -6,6 +6,9 @@
     "collect": "node src/collect.mjs",
     "pricing:update": "node src/update-pricing.mjs",
     "pricing:backfill": "node src/backfill-pricing.mjs",
+    "db:init": "node src/db-init.mjs",
+    "db:check": "node src/db-check.mjs",
+    "db:migrate": "node src/db-migrate.mjs",
     "dev": "node src/dev.mjs",
     "dev:client": "vite --host 127.0.0.1 --port 5173",
     "dev:server": "node src/server.mjs",
@@ -19,6 +22,8 @@
   },
   "dependencies": {
     "echarts": "^6.0.0",
+    "mysql2": "^3.23.0",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

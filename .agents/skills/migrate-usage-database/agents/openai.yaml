@@ -1,0 +1,4 @@
+interface:
+  display_name: "迁移用量数据库"
+  short_description: "初始化并迁移 SQLite 到 PostgreSQL 或 MySQL"
+  default_prompt: "使用 $migrate-usage-database 将本机 SQLite 用量数据安全迁移到统一数据库。"

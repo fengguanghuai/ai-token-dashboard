@@ -1,9 +1,13 @@
+import './load-env.mjs';
 import { createReadStream, existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
-import { deleteTimeUsageForSource, openDb, pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
+import {
+  apiRowIdExpression, deleteTimeUsageForSource, hourExpression, openDb,
+  pruneCollectionRuns, recordRun, upsertDaily, upsertSession, upsertTimeUsage
+} from './db.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
 import { calculateCacheSavings, loadPricing } from './pricing.mjs';
 import { queryQuota } from './quota.mjs';
@@ -21,7 +25,8 @@ const port = Number(process.env.PORT || 4173);
 const staticDir = existsSync(resolve(process.cwd(), 'dist'))
   ? resolve(process.cwd(), 'dist')
   : resolve(process.cwd(), 'public');
-const db = openDb(process.env.DB_PATH);
+const db = await openDb();
+const as = (name) => db.driver === 'mysql' ? `\`${name}\`` : `"${name}"`;
 // Pricing data for serve-time cache-savings estimation. Same bundled cache
 // file the collector uses; savings silently degrade to 0 if it is missing.
 const pricingData = await loadPricing(resolve(process.cwd(), 'data', 'pricing-litellm.json'));
@@ -37,39 +42,47 @@ let collectionState = {
 };
 
 const server = createServer((req, res) => {
+  handleRequest(req, res).catch((error) => {
+    console.error(error);
+    if (!res.headersSent) sendJson(res, { error: 'Internal server error' }, 500);
+    else res.end();
+  });
+});
+
+async function handleRequest(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname.startsWith('/api/')) {
-    handleApi(req, url, res);
+    await handleApi(req, url, res);
     return;
   }
   serveStatic(url.pathname, res);
-});
+}
 
 server.listen(port, () => {
   console.log(`AI Token Dashboard: http://localhost:${port}`);
   startScheduledCollect();
 });
 
-function handleApi(req, url, res) {
+async function handleApi(req, url, res) {
   if (url.pathname === '/api/data') {
-    const rawSessions = all(`
+    const rawSessions = await all(`
       SELECT device, source,
-        session_id AS sessionId,
-        last_activity AS lastActivity,
-        project_path AS projectPath,
-        input_tokens AS inputTokens,
-        output_tokens AS outputTokens,
-        cache_creation_tokens AS cacheCreationTokens,
-        cache_read_tokens AS cacheReadTokens,
-        reasoning_output_tokens AS reasoningOutputTokens,
-        total_tokens AS totalTokens,
-        cost_usd AS costUSD
+        session_id AS ${as('sessionId')},
+        last_activity AS ${as('lastActivity')},
+        project_path AS ${as('projectPath')},
+        input_tokens AS ${as('inputTokens')},
+        output_tokens AS ${as('outputTokens')},
+        cache_creation_tokens AS ${as('cacheCreationTokens')},
+        cache_read_tokens AS ${as('cacheReadTokens')},
+        reasoning_output_tokens AS ${as('reasoningOutputTokens')},
+        total_tokens AS ${as('totalTokens')},
+        cost_usd AS ${as('costUSD')}
       FROM session_usage
       ORDER BY total_tokens DESC
     `);
-    const rawRuns = all(`
+    const rawRuns = await all(`
       SELECT id, device, source, status, message,
-        collected_at AS collectedAt
+        collected_at AS ${as('collectedAt')}
       FROM collection_runs
       ORDER BY id DESC
       LIMIT 500
@@ -98,16 +111,17 @@ function handleApi(req, url, res) {
       }
     }
 
-    const rawDaily = all(`
-      SELECT rowid AS id, device, source,
-        usage_date AS usageDate, model,
-        input_tokens AS inputTokens,
-        output_tokens AS outputTokens,
-        cache_creation_tokens AS cacheCreationTokens,
-        cache_read_tokens AS cacheReadTokens,
-        reasoning_output_tokens AS reasoningOutputTokens,
-        total_tokens AS totalTokens,
-        cost_usd AS costUSD
+    const dailyId = apiRowIdExpression(db.driver, ['device', 'source', 'usage_date', 'model']);
+    const rawDaily = await all(`
+      SELECT ${dailyId} AS id, device, source,
+        usage_date AS ${as('usageDate')}, model,
+        input_tokens AS ${as('inputTokens')},
+        output_tokens AS ${as('outputTokens')},
+        cache_creation_tokens AS ${as('cacheCreationTokens')},
+        cache_read_tokens AS ${as('cacheReadTokens')},
+        reasoning_output_tokens AS ${as('reasoningOutputTokens')},
+        total_tokens AS ${as('totalTokens')},
+        cost_usd AS ${as('costUSD')}
       FROM daily_usage
       ORDER BY usage_date DESC
     `);
@@ -138,21 +152,22 @@ function handleApi(req, url, res) {
   if (url.pathname === '/api/time') {
     // Per-event rows are only needed for the precise (datetime) view, so the
     // client loads them lazily instead of shipping the whole table on first paint.
+    const timeId = apiRowIdExpression(db.driver, ['device', 'source', 'event_key']);
     sendJson(res, {
-      time: all(`
-        SELECT rowid AS id, device, source,
-          event_time AS eventTime,
-          usage_date AS usageDate,
+      time: await all(`
+        SELECT ${timeId} AS id, device, source,
+          event_time AS ${as('eventTime')},
+          usage_date AS ${as('usageDate')},
           model,
-          project_path AS projectPath,
-          session_id AS sessionId,
-          input_tokens AS inputTokens,
-          output_tokens AS outputTokens,
-          cache_creation_tokens AS cacheCreationTokens,
-          cache_read_tokens AS cacheReadTokens,
-          reasoning_output_tokens AS reasoningOutputTokens,
-          total_tokens AS totalTokens,
-          cost_usd AS costUSD
+          project_path AS ${as('projectPath')},
+          session_id AS ${as('sessionId')},
+          input_tokens AS ${as('inputTokens')},
+          output_tokens AS ${as('outputTokens')},
+          cache_creation_tokens AS ${as('cacheCreationTokens')},
+          cache_read_tokens AS ${as('cacheReadTokens')},
+          reasoning_output_tokens AS ${as('reasoningOutputTokens')},
+          total_tokens AS ${as('totalTokens')},
+          cost_usd AS ${as('costUSD')}
         FROM time_usage
         ORDER BY event_time DESC
       `)
@@ -163,15 +178,16 @@ function handleApi(req, url, res) {
     // Pre-aggregate events for the dashboard heatmap. Keeping the filter
     // dimensions in the result lets the client apply the same source/device/
     // model filters without downloading the much larger per-event dataset.
+    const localHour = hourExpression(db.driver);
     sendJson(res, {
-      hourly: all(`
+      hourly: await all(`
         SELECT device, source,
-          usage_date AS usageDate,
-          CAST(strftime('%H', event_time, 'localtime') AS INTEGER) AS hour,
+          usage_date AS ${as('usageDate')},
+          ${localHour} AS hour,
           model,
-          COUNT(*) AS eventCount,
-          SUM(total_tokens) AS totalTokens,
-          SUM(cost_usd) AS costUSD
+          COUNT(*) AS ${as('eventCount')},
+          SUM(total_tokens) AS ${as('totalTokens')},
+          SUM(cost_usd) AS ${as('costUSD')}
         FROM time_usage
         GROUP BY device, source, usage_date, hour, model
         ORDER BY usage_date DESC, hour DESC
@@ -180,11 +196,11 @@ function handleApi(req, url, res) {
     return;
   }
   if (url.pathname === '/api/quota') {
-    handleQuota(res);
+    await handleQuota(res);
     return;
   }
   if (url.pathname === '/api/ingest' && req.method === 'POST') {
-    handleIngest(req, res);
+    await handleIngest(req, res);
     return;
   }
   if (url.pathname === '/api/collect' && req.method === 'POST') {
@@ -221,7 +237,7 @@ function startCollection({ reason = 'manual' } = {}) {
   const args = ['src/collect.mjs'];
   const device = collectionDevice();
   if (device) args.push('--device', device);
-  if (process.env.DB_PATH) args.push('--db', process.env.DB_PATH);
+  if (process.env.DB_PATH && !process.env.DATABASE_URL) args.push('--db', process.env.DB_PATH);
 
   const child = spawn(process.execPath, args, {
     cwd: process.cwd(),
@@ -369,21 +385,16 @@ async function handleIngest(req, res) {
       if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
     }
 
-    db.exec('BEGIN');
-    try {
-      dailyRows.forEach((row) => upsertDaily(db, row));
-      for (const row of timePairs.values()) deleteTimeUsageForSource(db, row.device, row.source);
-      timeRows.forEach((row) => upsertTimeUsage(db, row));
-      sessionRows.forEach((row) => upsertSession(db, row));
-      runRows.forEach((row) => recordRun(db, row));
-      db.exec('COMMIT');
-    } catch (error) {
-      db.exec('ROLLBACK');
-      throw error;
-    }
+    await db.transaction(async (tx) => {
+      for (const row of dailyRows) await upsertDaily(tx, row);
+      for (const row of timePairs.values()) await deleteTimeUsageForSource(tx, row.device, row.source);
+      for (const row of timeRows) await upsertTimeUsage(tx, row);
+      for (const row of sessionRows) await upsertSession(tx, row);
+      for (const row of runRows) await recordRun(tx, row);
+    });
 
     // The hub stays up across many ingests; keep collection_runs bounded.
-    if (runRows.length) pruneCollectionRuns(db);
+    if (runRows.length) await pruneCollectionRuns(db);
 
     sendJson(res, { ok: true, daily: dailyRows.length, time: timeRows.length, sessions: sessionRows.length, runs: runRows.length });
   } catch (error) {
@@ -413,8 +424,8 @@ function serveStatic(pathname, res) {
   createReadStream(filePath).pipe(res);
 }
 
-function all(sql) {
-  return db.prepare(sql).all();
+function all(sql, params) {
+  return db.all(sql, params);
 }
 
 function sendJson(res, value, status = 200) {

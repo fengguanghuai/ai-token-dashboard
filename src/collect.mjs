@@ -1,3 +1,4 @@
+import './load-env.mjs';
 import { hostname } from 'node:os';
 import { resolve } from 'node:path';
 import { deleteTimeUsageForSource, openDb, recordRun, upsertDaily, upsertSession, upsertTimeUsage } from './db.mjs';
@@ -15,7 +16,7 @@ const COLLECTORS = [
 
 const args = parseArgs(process.argv.slice(2));
 const device = args.device || hostname();
-const db = openDb(args.db);
+const db = await openDb(args.db);
 const exportPayload = {
   device,
   collectedAt: new Date().toISOString(),
@@ -35,7 +36,7 @@ if (args.push) {
   await pushPayload(args.push, exportPayload, args.token);
 }
 
-db.close();
+await db.close();
 
 async function collectLocal() {
   let anyError = false;
@@ -57,7 +58,7 @@ async function collectLocal() {
         collectedAt: exportPayload.collectedAt,
         command: `js-collector:${module}`
       };
-      recordRun(db, run);
+      await recordRun(db, run);
       exportPayload.runs.push(run);
       console.warn(`[${label}] ${error.message}`);
       anyError = true;
@@ -65,17 +66,21 @@ async function collectLocal() {
     }
 
     const dailyRows = normalizeDailyRows(graphJson, device);
-    runInTransaction(db, () => dailyRows.forEach((row) => upsertDaily(db, row)));
+    await runInTransaction(db, async (tx) => {
+      for (const row of dailyRows) await upsertDaily(tx, row);
+    });
     exportPayload.daily.push(...dailyRows);
 
     const sessionRows = normalizeSessionRows(modelsJson, device);
-    runInTransaction(db, () => sessionRows.forEach((row) => upsertSession(db, row)));
+    await runInTransaction(db, async (tx) => {
+      for (const row of sessionRows) await upsertSession(tx, row);
+    });
     exportPayload.sessions.push(...sessionRows);
 
     const timeRows = normalizeTimeRows(eventsJson, device);
-    runInTransaction(db, () => {
-      deleteTimeUsageForSource(db, device, label);
-      timeRows.forEach((row) => upsertTimeUsage(db, row));
+    await runInTransaction(db, async (tx) => {
+      await deleteTimeUsageForSource(tx, device, label);
+      for (const row of timeRows) await upsertTimeUsage(tx, row);
     });
     exportPayload.time.push(...timeRows);
 
@@ -87,7 +92,7 @@ async function collectLocal() {
       collectedAt: exportPayload.collectedAt,
       command: `js-collector:${module}`
     };
-    recordRun(db, run);
+    await recordRun(db, run);
     exportPayload.runs.push(run);
     console.log(`[${label}] daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}`);
   }
@@ -145,14 +150,7 @@ function normalizeEventTime(value) {
 }
 
 function runInTransaction(database, work) {
-  database.exec('BEGIN');
-  try {
-    work();
-    database.exec('COMMIT');
-  } catch (error) {
-    database.exec('ROLLBACK');
-    throw error;
-  }
+  return database.transaction(work);
 }
 
 function normalizeDailyRows(json, deviceName) {

@@ -1,3 +1,4 @@
+import './load-env.mjs';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 

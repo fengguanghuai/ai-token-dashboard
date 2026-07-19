@@ -48,7 +48,7 @@
 
 ## 环境要求
 
-- **Node.js ≥ 22.5.0**（使用内置的 `node:sqlite` 模块）
+- **Node.js ≥ 22.5.0**（SQLite 使用内置的 `node:sqlite` 模块）
 
 ---
 
@@ -76,6 +76,28 @@ http://localhost:4173/review # 复盘视图
 ```
 
 用量数据写入 `data/usage.sqlite`，`data/` 目录已加入 `.gitignore`，不会提交到 Git。
+
+### 多设备统一数据库
+
+项目支持 SQLite、PostgreSQL（包括 Supabase）和 MySQL。复制 `.env.example` 为不纳入 Git 的 `.env`，配置一个共享连接：
+
+```bash
+# Supabase / PostgreSQL（推荐使用 Supabase Session pooler URL）
+DATABASE_URL=postgresql://user:password@host:5432/postgres?sslmode=require
+
+# 或 MySQL 8+
+# DATABASE_URL=mysql://user:password@host:3306/ai_token_dashboard
+```
+
+初始化新数据库，并把当前机器的 SQLite 历史数据迁移进去：
+
+```bash
+npm run db:init
+npm run db:migrate -- --from data/usage.sqlite
+npm run db:check
+```
+
+迁移会批量 Upsert 三张用量表并校验记录数，可安全重跑；`collection_runs` 仅在目标为空时迁移，避免重复日志。其他设备只需配置相同的 `DATABASE_URL`，执行 `npm run db:init` 后正常采集。仓库还提供项目级 skill：`$migrate-usage-database`。
 
 ### 前端开发模式
 
@@ -179,7 +201,11 @@ docker compose up -d
 |---------|--------|------|
 | `PORT` | `4173` | HTTP 服务端口 |
 | `API_PORT` | `4173` | `npm run dev` 中 API 服务端口 |
+| `DATABASE_URL` | _未设置_ | PostgreSQL/Supabase 或 MySQL 连接 URL；设置后优先于 SQLite |
+| `DB_DRIVER` | `sqlite` | 未设置 `DATABASE_URL` 时的数据库驱动 |
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
+| `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL 连接池大小 |
+| `DB_CONNECT_TIMEOUT_MS` | `10000` | 远程数据库连接超时毫秒数 |
 | `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | 是否启用服务内置定时采集 |
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | 定时采集间隔秒数，最低 10 秒 |
@@ -253,7 +279,10 @@ src/
 ├── collect.mjs          # 数据采集 CLI 入口
 ├── dev.mjs              # 开发模式：同时启动 API 与 Vite
 ├── server.mjs           # HTTP 服务器 + API
-├── db.mjs               # SQLite schema 与 upsert 辅助函数
+├── db.mjs               # SQLite/PostgreSQL/MySQL 适配与 upsert
+├── db-init.mjs          # 初始化数据库 schema
+├── db-migrate.mjs       # SQLite 历史数据迁移
+├── db-check.mjs         # 连接与记录数检查
 ├── pricing.mjs          # LiteLLM + OpenRouter 定价匹配与成本估算
 ├── update-pricing.mjs   # 刷新本地定价缓存
 ├── collector-config.mjs # 读取 config/collectors.json 与路径展开
@@ -272,6 +301,10 @@ src/
 data/
 ├── pricing-litellm.json     # 随仓库提供的 LiteLLM 定价缓存
 └── pricing-openrouter.json  # 随仓库提供的 OpenRouter 定价缓存
+db/
+├── schema.sqlite.sql        # SQLite 初始化 schema
+├── schema.postgres.sql      # PostgreSQL/Supabase 初始化 schema
+└── schema.mysql.sql         # MySQL 初始化 schema
 ```
 
 ---
