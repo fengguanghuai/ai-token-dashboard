@@ -261,9 +261,29 @@ export function nowExpression(driver) {
   return `datetime('now')`;
 }
 
-export function todayExpression(driver) {
-  if (driver === 'postgres') return 'CURRENT_DATE::text';
-  if (driver === 'mysql') return `DATE_FORMAT(CURRENT_DATE(), '%Y-%m-%d')`;
+/**
+ * Display timezone for hour-of-day and "today" bucketing. Defaults to the host
+ * machine's zone so every deployment auto-adapts to its user; override with the
+ * DISPLAY_TZ env var (an IANA name like "Asia/Shanghai") for hosted/UTC servers.
+ * Invalid values fall back to UTC — the value is interpolated into SQL, so it is
+ * validated against IANA name characters to keep it injection-safe.
+ */
+export function resolveDisplayTz() {
+  const configured = (process.env.DISPLAY_TZ || '').trim();
+  const tz = configured || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  if (!/^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(tz)) {
+    console.warn(`[db] Ignoring invalid DISPLAY_TZ "${tz}", falling back to UTC`);
+    return 'UTC';
+  }
+  return tz;
+}
+
+export function todayExpression(driver, tz = resolveDisplayTz()) {
+  // The price-lock "today" boundary follows the display timezone so it matches
+  // each user's local day (and the day buckets the source tools report).
+  if (driver === 'postgres') return `(CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date::text`;
+  // CONVERT_TZ needs the MySQL timezone tables loaded; falls back to NULL without them.
+  if (driver === 'mysql') return `DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '${tz}'), '%Y-%m-%d')`;
   return `date('now', 'localtime')`;
 }
 
@@ -441,12 +461,13 @@ export function apiRowIdExpression(driver, columns) {
   return columns.map(column => `COALESCE(${column}, '')`).join(` || ':' || `);
 }
 
-export function hourExpression(driver, column = 'event_time') {
+export function hourExpression(driver, column = 'event_time', tz = resolveDisplayTz()) {
   if (driver === 'postgres') {
-    return `CAST(EXTRACT(HOUR FROM CAST(${column} AS timestamptz) AT TIME ZONE CURRENT_SETTING('TIMEZONE')) AS INTEGER)`;
+    return `CAST(EXTRACT(HOUR FROM CAST(${column} AS timestamptz) AT TIME ZONE '${tz}') AS INTEGER)`;
   }
+  // CONVERT_TZ needs the MySQL timezone tables loaded; falls back to NULL without them.
   if (driver === 'mysql') {
-    return `HOUR(DATE_ADD(STR_TO_DATE(LEFT(${column}, 19), '%Y-%m-%dT%H:%i:%s'), INTERVAL TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(), NOW()) MINUTE))`;
+    return `HOUR(CONVERT_TZ(STR_TO_DATE(LEFT(${column}, 19), '%Y-%m-%dT%H:%i:%s'), '+00:00', '${tz}'))`;
   }
   return `CAST(strftime('%H', ${column}, 'localtime') AS INTEGER)`;
 }

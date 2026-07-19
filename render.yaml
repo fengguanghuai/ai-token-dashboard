@@ -9,6 +9,9 @@ services:
         value: 4173
       - key: INGEST_TOKEN
         generateValue: true
+      # 云端主机默认 UTC。取消注释并改成你的时区，热力图/价格锁定按本地时间显示。
+      # - key: DISPLAY_TZ
+      #   value: Asia/Shanghai
     disk:
       name: ai-token-dashboard-data
       mountPath: /app/data

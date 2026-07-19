@@ -206,6 +206,7 @@ docker compose up -d
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
 | `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL 连接池大小 |
 | `DB_CONNECT_TIMEOUT_MS` | `10000` | 远程数据库连接超时毫秒数 |
+| `DISPLAY_TZ` | 主机时区 | 热力图小时分布与每日价格锁定「今天」所用的展示时区（IANA 名称，如 `Asia/Shanghai`）。默认跟随运行服务器的本机时区；部署在 UTC 主机（如 Render/Docker）上时显式指定，否则热力图会按 UTC 显示 |
 | `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | 是否启用服务内置定时采集 |
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | 定时采集间隔秒数，最低 10 秒 |
