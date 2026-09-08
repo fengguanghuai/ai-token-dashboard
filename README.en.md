@@ -23,7 +23,7 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 
 ## Features
 
-- **Multi-source collection** — Claude Code, Codex CLI, OpenCode, Gemini CLI, Hermes Agent, OpenClaw
+- **Multi-source collection** — Claude Code, Codex CLI, OpenCode, Gemini CLI, Hermes Agent, OpenClaw, Grok CLI, DeepSeek Harness
 - **Two views** — interactive usage dashboard (`/`) and a printable retrospective page (`/review`)
 - **Light / dark theme** — follows the OS by default, toggles from the top-right, and the choice is remembered locally across both pages
 - **Cost tracking** — per-model cost estimation via bundled LiteLLM + OpenRouter pricing caches
@@ -44,8 +44,14 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/tmp/` |
 | Hermes Agent | `~/.hermes/state.db` (or `$HERMES_HOME/state.db`) |
 | OpenClaw | `~/.openclaw/agents/` |
+| Grok CLI | `~/.grok/sessions/` (override home with `GROK_HOME`) |
+| DeepSeek Harness (DSH) | `~/.dsh/sessions/` (override home with `DSH_HOME`, or sessions with `DSH_SESSIONS`) |
 
 Only the tools you actually have installed will produce data — others are silently skipped.
+
+Grok counts completed turns by model. Cache and reasoning are split out of their inclusive input/output totals to avoid double counting. Recorded `costUsdTicks` takes priority; turns without a recorded cost use the pricing tables.
+
+DSH reads plain `session.jsonl` and multi-frame `session.jsonl.zstd`. Final message usage replaces streaming usage, compaction calls are included, and fork seed history is excluded. Older chunk-only logs are also supported. Costs use model pricing. Compressed logs require the zstd API in Node 22.15+ or 23.8+; older runtimes warn and skip compressed files while still reading plain logs.
 
 ---
 

@@ -65,11 +65,14 @@ async function fingerprint(filePath) {
  * Return parsed records for `filePath`, reusing the cache when the file's
  * fingerprint is unchanged. `parseFile(filePath)` is only invoked on a miss.
  */
-export async function cachedParse(namespace, version, filePath, parseFile) {
+export async function cachedParse(namespace, version, filePath, parseFile, dependencies = []) {
   if (DISABLED) return parseFile(filePath);
 
   const store = await getStore(namespace, version);
-  const fp = await fingerprint(filePath);
+  const primary = await fingerprint(filePath);
+  const fp = primary && (dependencies.length
+    ? JSON.stringify([primary, ...await Promise.all(dependencies.map(fingerprint))])
+    : primary);
 
   if (fp) {
     const hit = store.prev.get(filePath);

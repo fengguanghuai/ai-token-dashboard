@@ -23,7 +23,7 @@
 
 ## 功能特性
 
-- **多源采集** — 支持 Claude Code、Codex CLI、OpenCode、Gemini CLI、Hermes Agent、OpenClaw
+- **多源采集** — 支持 Claude Code、Codex CLI、OpenCode、Gemini CLI、Hermes Agent、OpenClaw、Grok CLI、DeepSeek Harness
 - **双视图** — 交互式用量看板（`/`）和适合阅读与打印的复盘页（`/review`）
 - **亮色 / 暗色主题** — 默认跟随系统，右上角一键切换，选择记在本机，两个页面共用
 - **成本追踪** — 基于随仓库提供的 LiteLLM + OpenRouter 定价缓存，按模型估算 token 费用
@@ -44,8 +44,14 @@
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `~/.gemini/tmp/` |
 | Hermes Agent | `~/.hermes/state.db`（或 `$HERMES_HOME/state.db`） |
 | OpenClaw | `~/.openclaw/agents/` |
+| Grok CLI | `~/.grok/sessions/`（可用 `GROK_HOME` 指定 home） |
+| DeepSeek Harness (DSH) | `~/.dsh/sessions/`（可用 `DSH_HOME` 指定 home，或 `DSH_SESSIONS` 指定会话目录） |
 
 只有实际安装了对应工具才会产生数据，未安装的会被静默跳过。
+
+Grok 按已完成回合的模型用量统计：缓存和 reasoning 从其所属的 input/output 中拆出，避免重复累计；优先使用日志中的 `costUsdTicks` 费用，没有记录时按定价表估算。
+
+DSH 支持明文 `session.jsonl` 和多帧 `session.jsonl.zstd`。优先采用最终消息用量，同时计入上下文压缩调用，排除 fork 继承的历史；旧版仅含流式 usage 的日志也能采集。DSH 费用按模型定价估算。压缩日志需要 Node 22.15+ 或 23.8+ 的 zstd API，不支持时提示并跳过压缩文件，明文日志仍可采集。
 
 ---
 
@@ -172,7 +178,7 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 服务内置定时采集能力，默认关闭。开启后，服务会按配置间隔自动执行一次本机采集；Docker 和普通 `npm run serve` 启动走的是同一套逻辑。
 
-如果用 Docker 采集，需要把宿主机的 AI 工具日志目录挂载进容器。`docker-compose.yml` 已内置相关环境变量和挂载，默认每 5 分钟运行一次采集，并写入同一个 `./data/usage.sqlite`。
+如果用 Docker 采集，需要把宿主机的 AI 工具日志目录挂载进容器。`docker-compose.yml` 已内置相关环境变量和挂载，默认采集间隔为 5 分钟（默认未启用定时采集），并写入同一个 `./data/usage.sqlite`。
 
 Linux/macOS 示例：
 
