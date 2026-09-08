@@ -23,7 +23,7 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 
 ## Features
 
-- **Multi-source collection** — Claude Code, Codex CLI, OpenCode, Gemini CLI, Hermes Agent, OpenClaw, Grok CLI, DeepSeek Harness
+- **Multi-source collection** — Claude Code, Codex CLI, OpenCode, Gemini CLI, Hermes Agent, OpenClaw, Grok CLI, DeepSeek Harness, Pi Agent
 - **Two views** — interactive usage dashboard (`/`) and a printable retrospective page (`/review`)
 - **Light / dark theme** — follows the OS by default, toggles from the top-right, and the choice is remembered locally across both pages
 - **Cost tracking** — per-model cost estimation via bundled LiteLLM + OpenRouter pricing caches
@@ -46,12 +46,17 @@ Reads session logs directly from your machine, aggregates them into a local SQLi
 | OpenClaw | `~/.openclaw/agents/` |
 | Grok CLI | `~/.grok/sessions/` (override home with `GROK_HOME`) |
 | DeepSeek Harness (DSH) | `~/.dsh/sessions/` (override home with `DSH_HOME`, or sessions with `DSH_SESSIONS`) |
+| Pi Agent | `~/.pi/agent/sessions/` (override agent directory with `PI_CODING_AGENT_DIR`, or sessions with `PI_CODING_AGENT_SESSION_DIR`) |
 
 Only the tools you actually have installed will produce data — others are silently skipped.
 
 Grok counts completed turns by model. Cache and reasoning are split out of their inclusive input/output totals to avoid double counting. Recorded `costUsdTicks` takes priority; turns without a recorded cost use the pricing tables.
 
 DSH reads plain `session.jsonl` and multi-frame `session.jsonl.zstd`. Final message usage replaces streaming usage, compaction calls are included, and fork seed history is excluded. Older chunk-only logs are also supported. Costs use model pricing. Compressed logs require the zstd API in Node 22.15+ or 23.8+; older runtimes warn and skip compressed files while still reading plain logs.
+
+Pi reads assistant usage, explicit tool usage, and compaction/branch-summary usage from JSONL. Reasoning is split out of output to avoid double counting. Recorded costs take priority, with model pricing as a fallback. All billed branches remain counted; copied fork history is excluded only when a scanned parent has matching entry IDs, timestamps and usage.
+
+Run `npm run pricing:update` to refresh the bundled price snapshots. Estimates use standard snapshot rates (including DeepSeek peak rates), without time-of-day discounts or automatic repricing of historical database rows.
 
 ---
 

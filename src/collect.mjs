@@ -15,7 +15,8 @@ const COLLECTORS = [
   { module: './collectors/gemini.mjs', label: 'Gemini CLI' },
   { module: './collectors/openclaw.mjs', label: 'OpenClaw' },
   { module: './collectors/grok.mjs', label: 'Grok CLI' },
-  { module: './collectors/dsh.mjs', label: 'DeepSeek Harness' }
+  { module: './collectors/dsh.mjs', label: 'DeepSeek Harness' },
+  { module: './collectors/pi.mjs', label: 'Pi Agent' }
 ];
 
 const args = parseArgs(process.argv.slice(2));
@@ -238,7 +239,8 @@ function sourceLabel(client) {
     openclaw: 'OpenClaw',
     hermes: 'Hermes Agent',
     grok: 'Grok CLI',
-    dsh: 'DeepSeek Harness'
+    dsh: 'DeepSeek Harness',
+    pi: 'Pi Agent'
   };
   return labels[client] || client || 'unknown';
 }
