@@ -264,7 +264,8 @@ function alpha(color, a) {
 // order after the known sources.
 const SOURCE_ORDER = [
   'Claude Code', 'Codex CLI', 'OpenCode', 'Gemini CLI', 'Hermes Agent', 'OpenClaw',
-  'Grok CLI'
+  'Grok CLI',
+  'DeepSeek Harness'
 ];
 
 function sortSources(list) {

@@ -46,6 +46,11 @@
       "roots": [
         "~/.grok/sessions"
       ]
+    },
+    "dsh": {
+      "roots": [
+        "~/.dsh/sessions"
+      ]
     }
   }
 }
