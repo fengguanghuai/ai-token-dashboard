@@ -55,7 +55,7 @@ async function getStore(namespace, version) {
 async function fingerprint(filePath) {
   try {
     const st = await stat(filePath);
-    return `${Math.round(st.mtimeMs)}:${st.size}`;
+    return `${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
   } catch {
     return null;
   }

@@ -54,6 +54,19 @@ test('Pi preserves additive totals and the log cost across all output views', as
   });
 });
 
+test('total-only usage remains unclassified rather than inventing a billable token type', async () => {
+  await withSessions({ 's.jsonl': [header('s'), reply('a', {
+    message: { role: 'assistant', model: 'model-one', usage: { totalTokens: 300, cost: { total: 0.2 } } }
+  })] }, async () => {
+    const result = await collect(pricing);
+    assert.equal(result.eventsJson.events[0].tokens.unclassified, 300);
+    assert.equal(result.eventsJson.events[0].tokens.input, 0);
+    assert.equal(result.modelsJson.entries[0].unclassified, 300);
+    assert.equal(result.graphJson.contributions[0].clients[0].tokens.unclassified, 300);
+    assert.equal(result.modelsJson.entries[0].cost, 0.2);
+  });
+});
+
 test('zero cost is retained; missing and invalid costs use per-call pricing', async () => {
   const messages = [0, undefined, -1, 'invalid'].map((cost, index) => reply(`a${index}`, {
     message: { role: 'assistant', model: 'model-one', usage: { ...usage, cost: { total: cost } } }

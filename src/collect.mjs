@@ -193,7 +193,8 @@ function normalizeSessionRows(json, deviceName) {
       output: positiveNumber(entry.output),
       cacheRead: positiveNumber(entry.cacheRead),
       cacheWrite: positiveNumber(entry.cacheWrite),
-      reasoning: positiveNumber(entry.reasoning)
+      reasoning: positiveNumber(entry.reasoning),
+      unclassified: positiveNumber(entry.unclassified)
     };
     const source = sourceLabel(entry.client);
     const workspace = entry.workspaceLabel || entry.workspaceKey || '';
@@ -221,7 +222,8 @@ function normalizeTokens(tokens = {}) {
     output: positiveNumber(tokens.output),
     cacheRead: positiveNumber(tokens.cacheRead ?? tokens.cache_read),
     cacheWrite: positiveNumber(tokens.cacheWrite ?? tokens.cache_write),
-    reasoning: positiveNumber(tokens.reasoning)
+    reasoning: positiveNumber(tokens.reasoning),
+    unclassified: positiveNumber(tokens.unclassified)
   };
 }
 

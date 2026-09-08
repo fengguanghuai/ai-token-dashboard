@@ -104,7 +104,8 @@ export async function loadPricing(cachePath) {
   try {
     const res = await fetch(LITELLM_URL, { signal: AbortSignal.timeout(15_000) });
     if (res.ok) {
-      const data = await res.json();
+      const fresh = await res.json();
+      const data = await preserveRetiredPricing(cachePath, fresh);
       _pricingData = { fetchedAt: Date.now(), data };
       // Persist to disk
       if (cachePath) {
@@ -135,6 +136,22 @@ export async function loadPricing(cachePath) {
   return null;
 }
 
+/** Preserve retired model entries, but replace each current model as one unit. */
+export function mergePricingSnapshots(previous, fresh) {
+  if (!fresh || typeof fresh !== 'object' || Array.isArray(fresh) || !Object.keys(fresh).length) {
+    throw new Error('empty or invalid pricing response');
+  }
+  return { ...(previous && typeof previous === 'object' && !Array.isArray(previous) ? previous : {}), ...fresh };
+}
+
+async function preserveRetiredPricing(path, fresh) {
+  let previous = {};
+  if (path) {
+    try { previous = JSON.parse(await readFile(path, 'utf8')).data || {}; } catch { /* first refresh */ }
+  }
+  return mergePricingSnapshots(previous, fresh);
+}
+
 /**
  * Calculate USD cost for a model + token breakdown.
  *
@@ -156,6 +173,20 @@ export function calculateCost(model, tokens, pricingData, provider = null, optio
       cacheRead * validPrice(p.cacheRead) +
       cacheWrite * validPrice(p.cacheWrite)
     );
+  }
+
+  const bare = String(model).toLowerCase().split('/').pop();
+  const promptTokens = input + cacheRead + cacheWrite;
+  // These model families switch the entire request to the long-context rate.
+  // Other datasets retain the historical tiered policy unless explicitly known.
+  const openaiLong = /^gpt-(?:5\.[456](?:-|$)|6-astra(?:-|$))/.test(bare) && p.inputAbove272k != null;
+  const xaiLong = /^grok-/.test(bare) && p.inputAbove200k != null;
+  if (openaiLong || xaiLong) {
+    const suffix = openaiLong ? 'Above272k' : 'Above200k';
+    const long = openaiLong ? promptTokens > 272_000 : promptTokens >= 200_000;
+    const rate = key => validPrice(long ? (p[`${key}${suffix}`] ?? p[key]) : p[key]);
+    return input * rate('input') + (output + reasoning) * rate('output')
+      + cacheRead * rate('cacheRead') + cacheWrite * rate('cacheWrite');
   }
 
   return (
@@ -186,16 +217,17 @@ export function calculateCost(model, tokens, pricingData, provider = null, optio
  * would have cost with every cached token billed at the full input rate,
  * minus the actual estimated cost. 0 when pricing is unknown.
  */
-export function calculateCacheSavings(model, tokens, pricingData, provider = null) {
+export function calculateCacheSavings(model, tokens, pricingData, provider = null, options = {}) {
   const { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, reasoning = 0 } = tokens;
   if (!cacheRead && !cacheWrite) return 0;
   const uncached = calculateCost(
     model,
     { input: input + cacheRead + cacheWrite, output, reasoning },
     pricingData,
-    provider
+    provider,
+    options
   );
-  const actual = calculateCost(model, tokens, pricingData, provider);
+  const actual = calculateCost(model, tokens, pricingData, provider, options);
   return Math.max(0, uncached - actual);
 }
 
@@ -381,8 +413,9 @@ async function loadOpenRouterCache() {
   }
 
   try {
-    const data = await fetchOpenRouterPricing();
-    if (Object.keys(data).length > 0) {
+    const fresh = await fetchOpenRouterPricing();
+    if (Object.keys(fresh).length > 0) {
+      const data = await preserveRetiredPricing(cachePath, fresh);
       await mkdir(dirname(cachePath), { recursive: true });
       await writeFile(cachePath, JSON.stringify({ fetchedAt: Date.now(), data }), 'utf8');
       console.log(`[pricing] fetched from OpenRouter (${Object.keys(data).length} models)`);
@@ -567,6 +600,7 @@ function litellmEntryToRates(entry) {
     cacheReadAbove272k: entry.cache_read_input_token_cost_above_272k_tokens,
     cacheWrite:         entry.cache_creation_input_token_cost ?? 0,
     cacheWriteAbove200k: entry.cache_creation_input_token_cost_above_200k_tokens,
+    cacheWriteAbove272k: entry.cache_creation_input_token_cost_above_272k_tokens,
   };
 }
 

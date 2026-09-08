@@ -27,6 +27,11 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { existsSync }              from 'node:fs';
 import { join, basename, extname } from 'node:path';
+import { createHash } from 'node:crypto';
+import { gunzipSync } from 'node:zlib';
+import { DatabaseSync } from 'node:sqlite';
+import { decodeZstdContainer } from './dsh.mjs';
+import { parseSessionFile as parseCodexSession } from './codex.mjs';
 import { configuredPaths } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { canonicalProvider, localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
@@ -34,7 +39,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY  = 'openclaw';
 export const SOURCE_LABEL = 'OpenClaw';
-const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
+const CACHE_VERSION = 3;   // bump when parseSessionFile output shape changes
 
 // ---------------------------------------------------------------------------
 // Path helpers
@@ -54,7 +59,20 @@ async function safeReaddir(dir) {
 }
 
 async function safeReadFile(filePath) {
-  try { return await readFile(filePath, 'utf8'); } catch { return null; }
+  try {
+    if ((await stat(filePath)).size > 64 * 1024 * 1024) throw new Error('transcript exceeds 64 MiB');
+    return decodeTranscript(await readFile(filePath));
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn(`[OpenClaw] cannot read transcript: ${error.message}`);
+    return null;
+  }
+}
+
+function decodeTranscript(buffer) {
+  if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
+    return gunzipSync(buffer, { maxOutputLength: 64 * 1024 * 1024 }).toString('utf8');
+  }
+  return decodeZstdContainer(buffer, SOURCE_LABEL);
 }
 
 async function fileMtimeMs(filePath) {
@@ -100,9 +118,10 @@ function sessionIdFromFilename(name) {
 // ---------------------------------------------------------------------------
 
 function isTranscriptFile(name) {
+  if (/checkpoint/i.test(name)) return false; // snapshots are not new API usage
   if (name === 'sessions.json') return false;          // handled separately
   if (name.endsWith('.json'))   return false;          // other json, not JSONL
-  return name.endsWith('.jsonl')
+  return /\.jsonl(?:\.(?:gz|zst|zstd))?$/.test(name)
       || name.includes('.jsonl.deleted.')
       || name.includes('.jsonl.reset.');
 }
@@ -157,13 +176,17 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
   if (!text) return [];
 
   const fallbackTimestamp = await fileMtimeMs(filePath);
+  return parseTranscript(text, sessionId, agentPath, fallbackTimestamp, filePath);
+}
+
+function parseTranscript(text, sessionId, agentPath, fallbackTimestamp, origin) {
   const fallbackDate = localDateFromTimestamp(fallbackTimestamp);
 
   let currentModel    = null;
   let currentProvider = null;
   const events        = [];
 
-  for (const raw of text.split('\n')) {
+  for (const [lineNumber, raw] of text.split('\n').entries()) {
     const line = raw.trim();
     if (!line) continue;
 
@@ -171,6 +194,7 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
     try { entry = JSON.parse(line); } catch { continue; }
 
     const type = entry.type;
+    if (type === 'session' && typeof entry.id === 'string') sessionId = entry.id;
 
     // ── model_change ──────────────────────────────────────────────────────
     if (type === 'model_change') {
@@ -196,7 +220,7 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
     // ── message ───────────────────────────────────────────────────────────
     if (type === 'message') {
       const msg = entry.message;
-      if (!msg || msg.role !== 'assistant') continue;
+      if (!msg || msg.role !== 'assistant' || msg.stopReason === 'pending') continue;
 
       const usage = msg.usage;
       if (!usage) continue;
@@ -206,7 +230,7 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
         (typeof msg.model    === 'string' && msg.model    ? msg.model    : null) ||
         (typeof currentModel === 'string' && currentModel ? currentModel : null);
 
-      if (!model) continue;   // no model resolved — skip (mirrors Rust)
+      if (!model) continue;
 
       const provider =
         (typeof msg.provider    === 'string' && msg.provider    ? msg.provider    : null) ||
@@ -218,17 +242,23 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
 
       // Date from message timestamp (milliseconds since epoch)
       let date = fallbackDate;
-      if (msg.timestamp != null) {
-        date = localDateFromTimestamp(msg.timestamp, fallbackDate);
+      const timestamp = msg.timestamp ?? entry.timestamp ?? fallbackTimestamp;
+      if (timestamp != null) {
+        date = localDateFromTimestamp(timestamp, fallbackDate);
       }
 
-      const cost = (usage.cost && usage.cost.total != null)
-        ? Math.max(0, Number(usage.cost.total) || 0)
-        : 0;
+      const costValue = usage.cost?.total;
+      const cost = typeof costValue === 'number' && Number.isFinite(costValue) && costValue >= 0 ? costValue : null;
+      const id = entry.id || msg.idempotencyKey || msg.responseId || `${origin}:${lineNumber}`;
+      const eventKey = createHash('sha256').update(JSON.stringify([sessionId, id])).digest('hex');
+      const mirror = /^codex-app-server:([^:]+):([^:]+):assistant$/.exec(msg.idempotencyKey || '');
 
       events.push({
         sessionId,
         agentPath,
+        eventKey,
+        timestamp,
+        mirrorTurn: mirror ? `${mirror[1]}:${mirror[2]}` : null,
         date,
         model: normalizeModelForGrouping(model),
         provider: canonicalProvider(provider) || provider,
@@ -255,8 +285,7 @@ async function parseSessionFile(filePath, sessionId, agentPath) {
  * Scan one agents root (e.g. ~/.openclaw/agents).
  * Layout: <root>/<agentId>/sessions/<files>
  *
- * We use a two-level walk: agentId dirs → sessions subdir → files.
- * This mirrors the real layout observed in tests and scanner.rs.
+ * Only transcript roots are traversed; checkpoint directories are excluded.
  *
  * Also tolerates a flatter layout where transcripts sit directly under
  * <agentId>/ without a "sessions" subdir (for forward-compat).
@@ -270,15 +299,20 @@ async function scanAgentsRoot(root) {
 
     const agentDir  = join(root, agentEntry.name);
     const agentPath = agentDir;  // use as workspace key
+    for (const name of ['openclaw-agent.sqlite', 'incognito-openclaw-agent.sqlite']) {
+      const dbPath = join(agentDir, 'agent', name);
+      if (existsSync(dbPath)) events.push(...await parseTranscriptDatabase(dbPath, agentPath));
+    }
 
     // Prefer <agentId>/sessions/ if it exists, else fall back to <agentId>/
     const sessionsDir = join(agentDir, 'sessions');
     const targetDir   = existsSync(sessionsDir) ? sessionsDir : agentDir;
-    const fileEntries = await safeReaddir(targetDir);
+    const fileEntries = await transcriptFiles(targetDir);
+    fileEntries.push(...await transcriptFiles(join(agentDir, 'session-sqlite-import-archive')));
 
     // --- index file first (to avoid double-counting files referenced by index)
     const indexRefs = new Set();
-    const indexEntry = fileEntries.find(e => e.isFile() && e.name === 'sessions.json');
+    const indexEntry = existsSync(join(targetDir, 'sessions.json'));
     if (indexEntry) {
       const indexPath = join(targetDir, 'sessions.json');
       const indexed   = await parseIndexFile(indexPath);
@@ -290,20 +324,90 @@ async function scanAgentsRoot(root) {
     }
 
     // --- individual transcript files
-    for (const fileEntry of fileEntries) {
-      if (!fileEntry.isFile()) continue;
-      if (!isTranscriptFile(fileEntry.name)) continue;
-
-      const filePath = join(targetDir, fileEntry.name);
+    for (const filePath of fileEntries) {
       if (indexRefs.has(filePath)) continue;   // already handled via index
 
-      const sessionId = sessionIdFromFilename(fileEntry.name);
+      const sessionId = sessionIdFromFilename(basename(filePath));
       const ev = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, () => parseSessionFile(filePath, sessionId, agentPath));
       events.push(...ev);
     }
+    const embedded = await collectEmbeddedCodex(agentDir);
+    const ownedTurns = new Set(embedded.map(event => event.mirrorTurn).filter(Boolean));
+    // Replace a mirrored terminal response only when the underlying turn was
+    // actually read, retaining the transcript as fallback for missing rollouts.
+    for (let index = events.length - 1; index >= 0; index--) {
+      if (events[index].agentPath === agentDir && ownedTurns.has(events[index].mirrorTurn)) events.splice(index, 1);
+    }
+    events.push(...embedded);
   }
 
   return events;
+}
+
+async function transcriptFiles(dir) {
+  const paths = [];
+  for (const entry of await safeReaddir(dir)) {
+    if (/checkpoint/i.test(entry.name) || entry.name === 'codex-home') continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) paths.push(...await transcriptFiles(path));
+    else if (entry.isFile() && isTranscriptFile(entry.name)) paths.push(path);
+  }
+  return paths.sort();
+}
+
+async function collectEmbeddedCodex(agentPath) {
+  const result = [];
+  const home = join(agentPath, 'agent', 'codex-home');
+  for (const subdir of ['sessions', 'archived_sessions']) {
+    for (const file of await transcriptFiles(join(home, subdir))) {
+      if (!file.endsWith('.jsonl')) continue;
+      const records = await cachedParse('openclaw-codex', 1, file, path => parseCodexSession(path, basename(path, '.jsonl')));
+      for (const record of records) {
+        const reasoning = Math.min(record.tokens.output, record.tokens.reasoning);
+        const tokens = { ...record.tokens, output: record.tokens.output - reasoning, reasoning };
+        result.push({ ...record, tokens, agentPath, provider: 'openai', cost: null,
+          mirrorTurn: record.turnId ? `${record.sessionId}:${record.turnId}` : null,
+          eventKey: createHash('sha256').update(JSON.stringify(['codex', record.sessionId, record.turnId, record.timestamp, tokens])).digest('hex') });
+      }
+    }
+  }
+  return result;
+}
+
+async function parseTranscriptDatabase(path, agentPath) {
+  const events = [];
+  const db = new DatabaseSync(path, { readOnly: true });
+  try {
+    const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(row => row.name));
+    if (tables.has('transcript_events')) {
+      let sessionId = null;
+      let lines = [];
+      let createdAt = 0;
+      const emit = () => {
+        if (lines.length) events.push(...parseTranscript(lines.join('\n'), sessionId, agentPath, createdAt, `${path}:${sessionId}`));
+      };
+      const statement = db.prepare('SELECT session_id, event_json, created_at FROM transcript_events ORDER BY session_id, seq');
+      for (const row of sqliteRows(statement)) {
+        if (row.session_id !== sessionId) { emit(); lines = []; sessionId = row.session_id; }
+        lines.push(row.event_json);
+        createdAt = row.created_at;
+      }
+      emit();
+    }
+    if (tables.has('session_transcript_archives')) {
+      for (const row of sqliteRows(db.prepare('SELECT session_id, archive_blob, created_at, generation FROM session_transcript_archives'))) {
+        try {
+          const text = decodeTranscript(Buffer.from(row.archive_blob));
+          events.push(...parseTranscript(text, row.session_id, agentPath, row.created_at, `${path}:${row.session_id}:${row.generation}`));
+        } catch (error) { console.warn(`[OpenClaw] cannot decode archive: ${error.message}`); }
+      }
+    }
+  } finally { db.close(); }
+  return events;
+}
+
+function sqliteRows(statement) {
+  return typeof statement.iterate === 'function' ? statement.iterate() : statement.all();
 }
 
 // ---------------------------------------------------------------------------
@@ -314,11 +418,20 @@ export async function collect(pricingData = null) {
   const roots  = getAgentRoots();
   const dailyMap = new Map();   // "date::model" → aggregated
   const wmMap    = new Map();   // "agentPath::model" → aggregated
+  const seen = new Set();
+  const timeEvents = [];
 
   function accumulate(events) {
-    for (const { sessionId, agentPath, date, model, provider, tokens, cost } of events) {
+    for (const { sessionId, agentPath, date, model, provider, tokens, cost, eventKey, timestamp } of events) {
+      if (seen.has(eventKey)) continue;
+      seen.add(eventKey);
       const calculatedCost = calculateCost(model, tokens, pricingData, provider);
-      const effectiveCost = calculatedCost > 0 ? calculatedCost : cost;
+      const effectiveCost = cost ?? calculatedCost;
+      const ms = typeof timestamp === 'number' ? (timestamp < 1e12 ? timestamp * 1000 : timestamp) : Date.parse(timestamp);
+      if (Number.isFinite(ms) && ms >= Date.now() - Number(process.env.TIME_USAGE_HISTORY_DAYS || 90) * 86400000) {
+        timeEvents.push({ client: CLIENT_KEY, eventKey, eventTime: new Date(ms).toISOString(), usageDate: date,
+          sessionId, workspaceKey: agentPath, workspaceLabel: agentPath, model, provider, tokens, cost: effectiveCost });
+      }
 
       // Daily
       const dk = `${date}::${model}`;
@@ -353,7 +466,8 @@ export async function collect(pricingData = null) {
   }
 
   await flushCache(CLIENT_KEY);
-  return buildOutput(dailyMap, wmMap);
+  await flushCache('openclaw-codex');
+  return { ...buildOutput(dailyMap, wmMap), eventsJson: { events: timeEvents } };
 }
 
 // ---------------------------------------------------------------------------

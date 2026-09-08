@@ -10,7 +10,7 @@ import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 
 export const CLIENT_KEY = 'pi';
 export const SOURCE_LABEL = 'Pi Agent';
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 export function sessionRoots() {
   const sessionDir = expandPath(process.env.PI_CODING_AGENT_SESSION_DIR);
@@ -53,10 +53,14 @@ function hash(value) {
 function tokensFromUsage(usage) {
   const output = count(usage.output);
   const reasoning = Math.min(output, count(usage.reasoning));
-  return {
+  const tokens = {
     input: count(usage.input), output: output - reasoning,
     cacheRead: count(usage.cacheRead), cacheWrite: count(usage.cacheWrite), reasoning
   };
+  const missing = count(usage.totalTokens) - Object.values(tokens).reduce((sum, value) => sum + value, 0);
+  // Keep an authoritative total without inventing input/output rates for it.
+  if (missing > 0) tokens.unclassified = missing;
+  return tokens;
 }
 
 function recordedCost(usage) {
@@ -148,7 +152,7 @@ function emptyTokens() {
 }
 
 function addTokens(target, tokens) {
-  for (const key of Object.keys(tokens)) target[key] += tokens[key];
+  for (const key of Object.keys(tokens)) target[key] = (target[key] || 0) + tokens[key];
 }
 
 export async function collect(pricingData = null) {

@@ -18,7 +18,7 @@
  */
 
 import { readdir, readFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { configuredPaths, configuredStrings, envPathList } from '../collector-config.mjs';
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
@@ -46,7 +46,7 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
-const CACHE_VERSION = 2;   // bump when parseSessionFile behavior or output changes
+const CACHE_VERSION = 3;   // bump when parseSessionFile behavior or output changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -190,6 +190,8 @@ export async function parseSessionFile(filePath, sessionId) {
   let workspace        = null;
   let replaySession    = false;
   let replaySecond     = null;
+  let logSessionId = null;
+  let turnId = null;
 
   const events = [];
 
@@ -205,6 +207,7 @@ export async function parseSessionFile(filePath, sessionId) {
     // ── session_meta ──────────────────────────────────────────────────
     if (type === 'session_meta') {
       const payload = entry.payload || {};
+      logSessionId ||= payload.id || null;
       if (isReplaySession(payload)) {
         replaySession = true;
       }
@@ -218,6 +221,7 @@ export async function parseSessionFile(filePath, sessionId) {
     if (type === 'turn_context') {
       const payload = entry.payload || {};
       currentModel = extractModel(payload) || currentModel;
+      turnId = payload.turn_id || payload.turnId || null;
       continue;
     }
 
@@ -300,7 +304,7 @@ export async function parseSessionFile(filePath, sessionId) {
         date = localDateFromTimestamp(timestamp);
       }
 
-      events.push({ timestamp, date, model, workspace, tokens });
+      events.push({ timestamp, date, model, workspace, tokens, sessionId: logSessionId || sessionId, turnId });
     }
   }
 
@@ -338,7 +342,10 @@ export async function collect(pricingData = null) {
   // Scan active, archived, and optional headless Codex outputs.
   const roots = [...getSessionRoots(), ...getHeadlessRoots()];
   const nestedPaths = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
-  const filePaths = [...new Set(nestedPaths.flat())];
+  const filePaths = [...new Set(nestedPaths.flat())].filter(file => !configuredPaths('openclaw', 'agentRoots').some(root => {
+    const parts = relative(root, file).split(/[/\\]/);
+    return parts[0] !== '..' && parts[1] === 'agent' && parts[2] === 'codex-home';
+  }));
 
   const dailyMap = new Map();   // "date::model" -> aggregated
   const wmMap    = new Map();   // "workspace::model" -> aggregated
@@ -355,6 +362,8 @@ export async function collect(pricingData = null) {
       if (eventKey) seenEventKeys.add(eventKey);
 
       const workspaceKey = workspace || sessionId;
+      // Output includes reasoning; that detail must not be billed again.
+      const cost = calculateCost(model, { ...tokens, reasoning: 0 }, pricingData);
       if (keepTimeEvent(timestamp)) {
         events.push({
           client: CLIENT_KEY,
@@ -366,7 +375,7 @@ export async function collect(pricingData = null) {
           workspaceLabel: decodeWorkspace(workspaceKey),
           model,
           tokens,
-          cost: calculateCost(model, tokens, pricingData)
+          cost
         });
       }
 
@@ -374,6 +383,7 @@ export async function collect(pricingData = null) {
       const dk = `${date}::${model}`;
       if (!dailyMap.has(dk)) dailyMap.set(dk, { date, model, ...zero(), cost: 0 });
       addInto(dailyMap.get(dk), tokens);
+      dailyMap.get(dk).cost += cost;
 
       // Workspace+model
       const wmk = `${workspaceKey}::${model}`;
@@ -387,6 +397,7 @@ export async function collect(pricingData = null) {
         });
       }
       addInto(wmMap.get(wmk), tokens);
+      wmMap.get(wmk).cost += cost;
     }
   }
 
@@ -448,7 +459,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
           client:  CLIENT_KEY,
           modelId: row.model,
           tokens,
-          cost: calculateCost(row.model, tokens, pricingData, null, { tiered: false }),
+          cost: row.cost,
         };
       })
     }));
@@ -467,7 +478,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
       workspaceLabel: wm.workspaceLabel,
       model:          wm.model,
       ...tokens,
-      cost: calculateCost(wm.model, tokens, pricingData, null, { tiered: false }),
+      cost: wm.cost,
     };
   });
 

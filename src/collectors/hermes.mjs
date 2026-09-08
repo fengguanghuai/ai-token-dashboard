@@ -82,7 +82,7 @@ export async function collect(pricingData = null) {
 
   let db;
   try {
-    db = new DatabaseSync(dbPath);
+    db = new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     return empty;
   }
@@ -118,6 +118,24 @@ export async function collect(pricingData = null) {
     return empty;
   }
 
+  // Recent stores keep billed usage by model/provider. Only replace a session
+  // total when usable detail exists, so partially migrated stores retain history.
+  try {
+    const detail = db.prepare(`
+      SELECT u.session_id AS id, u.model, u.billing_provider, s.started_at,
+        SUM(u.input_tokens) AS input_tokens, SUM(u.output_tokens) AS output_tokens,
+        SUM(u.cache_read_tokens) AS cache_read_tokens,
+        SUM(u.cache_write_tokens) AS cache_write_tokens,
+        SUM(u.reasoning_tokens) AS reasoning_tokens,
+        SUM(COALESCE(NULLIF(u.actual_cost_usd, 0), u.estimated_cost_usd, 0)) AS cost_usd
+      FROM session_model_usage u JOIN sessions s ON s.id = u.session_id
+      WHERE TRIM(COALESCE(u.model, '')) != ''
+      GROUP BY u.session_id, u.model, u.billing_provider, s.started_at
+    `).all().filter(row => ['input_tokens', 'output_tokens', 'cache_read_tokens',
+      'cache_write_tokens', 'reasoning_tokens', 'cost_usd'].some(key => Number(row[key]) > 0));
+    const covered = new Set(detail.map(row => row.id));
+    rows = [...rows.filter(row => !covered.has(row.id)), ...detail];
+  } catch { /* session_model_usage is optional in older versions */ }
   try { db.close(); } catch { /* ignore */ }
 
   const dailyMap = new Map();   // "date::model" -> aggregated
@@ -142,7 +160,7 @@ export async function collect(pricingData = null) {
     if (keepTimeEvent(row.started_at)) {
       events.push({
         client: CLIENT_KEY,
-        eventKey: sessId,
+        eventKey: JSON.stringify([sessId, model, provider]),
         eventTime: row.started_at,
         usageDate: date,
         sessionId: sessId,
@@ -161,15 +179,19 @@ export async function collect(pricingData = null) {
     add(d, tokens);
     d.cost += cost;
 
-    // Per-session record (each Hermes row IS a fully-aggregated session)
-    wmMap.set(sessId, {
+    const workspaceModelKey = JSON.stringify([sessId, model]);
+    if (!wmMap.has(workspaceModelKey)) wmMap.set(workspaceModelKey, {
       workspace:      sessId,
       workspaceLabel: sessId,
       model,
       provider,
-      ...tokens,
-      cost
+      ...zero(),
+      cost: 0
     });
+    const workspace = wmMap.get(workspaceModelKey);
+    add(workspace, tokens);
+    workspace.cost += cost;
+    if (workspace.provider !== provider) workspace.provider = null;
   }
 
   return { ...buildOutput(dailyMap, wmMap), eventsJson: { events } };

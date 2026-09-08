@@ -137,8 +137,8 @@ async function handleApi(req, url, res) {
           output: d.outputTokens,
           cacheRead: d.cacheReadTokens,
           cacheWrite: d.cacheCreationTokens,
-          reasoning: d.reasoningOutputTokens
-        }, pricingData)
+          reasoning: /^Codex CLI(?: \(JS\))?$/.test(d.source) ? 0 : d.reasoningOutputTokens
+        }, pricingData, null, { tiered: false })
       })),
       sessions,
       // Normalize runs: strip newlines from messages, shorten device names
