@@ -260,8 +260,21 @@ function alpha(color, a) {
   return `color-mix(in oklab, ${color}, transparent ${100 - a * 100}%)`;
 }
 
+// Canonical display order for source lists; anything unlisted keeps its data
+// order after the known sources.
+const SOURCE_ORDER = [
+  'Claude Code', 'Codex CLI', 'OpenCode', 'Gemini CLI', 'Hermes Agent', 'OpenClaw',
+  'Grok CLI'
+];
+
+function sortSources(list) {
+  const rank = new Map(SOURCE_ORDER.map((name, i) => [name, i]));
+  return [...list].sort((a, b) =>
+    (rank.get(a) ?? SOURCE_ORDER.length) - (rank.get(b) ?? SOURCE_ORDER.length));
+}
+
 export const U = {
-  PALETTE, PALETTE_FALLBACK, getSourceColor,
+  PALETTE, PALETTE_FALLBACK, getSourceColor, sortSources,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,
   localDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,

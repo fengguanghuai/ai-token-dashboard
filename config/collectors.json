@@ -41,6 +41,11 @@
         "~/.moltbot/agents",
         "~/.moldbot/agents"
       ]
+    },
+    "grok": {
+      "roots": [
+        "~/.grok/sessions"
+      ]
     }
   }
 }

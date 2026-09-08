@@ -5,6 +5,7 @@ import hermes from './icons/hermes.svg';
 import gemini from './icons/gemini.svg';
 import opencode from './icons/opencode.svg';
 import openclaw from './icons/openclaw.svg';
+import grok from './icons/grok.png';
 
 const SOURCE_ICON = {
   'Claude Code': claude,
@@ -12,7 +13,8 @@ const SOURCE_ICON = {
   'Hermes Agent': hermes,
   'Gemini CLI': gemini,
   'OpenCode': opencode,
-  'OpenClaw': openclaw
+  'OpenClaw': openclaw,
+  'Grok CLI': grok
 };
 
 // Some icons have a lot of internal padding / a non-square viewBox and read

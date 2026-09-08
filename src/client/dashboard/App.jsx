@@ -243,7 +243,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
 
   // Build option lists
   const filterBaseRows = filters.precise && M.time.length ? M.time : M.daily;
-  const allSources = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.source))), [filterBaseRows]);
+  const allSources = useMemo(() => U.sortSources(Array.from(new Set(filterBaseRows.map(r => r.source)))), [filterBaseRows]);
   const allDevices = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.device))), [filterBaseRows]);
   const allModels  = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.model))).filter(Boolean), [filterBaseRows]);
   const availableRange = useMemo(() => {
