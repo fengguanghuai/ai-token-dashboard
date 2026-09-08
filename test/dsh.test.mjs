@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Point the parse cache at a throwaway dir before the module reads the env at import.
 process.env.AI_TOKEN_DASHBOARD_CACHE_DIR = mkdtempSync(join(tmpdir(), 'dsh-cache-'));
+process.env.TIME_USAGE_HISTORY_DAYS = '36500'; // historical bundled fixtures
+const zstdOptions = { skip: typeof zlib.zstdDecompressSync !== 'function' };
 
 const { collect, parseSessionFile } = await import('../src/collectors/dsh.mjs');
 const { localDateFromTimestamp } = await import('../src/collectors/utils.mjs');
@@ -45,7 +47,7 @@ async function withSessions(fixtures, work) {
   }
 }
 
-test('single step usage is aggregated across a multi-frame container', async () => {
+test('single step usage is aggregated across a multi-frame container', zstdOptions, async () => {
   await withSessions([['dsh-single-step.jsonl.zstd', 'proj-a']], async () => {
     const { graphJson, modelsJson, eventsJson } = await collect(PRICING);
 
@@ -69,12 +71,12 @@ test('single step usage is aggregated across a multi-frame container', async () 
     assert.equal(entry.cacheRead, 5000);
 
     assert.equal(eventsJson.events.length, 1);
-    assert.equal(eventsJson.events[0].eventKey, 'session-fixsingle:2');
+    assert.equal(eventsJson.events[0].eventKey, 'session-fixsingle:turn:1:step:1');
     assert.ok(client.cost > 0, 'cost must be non-zero');
   });
 });
 
-test('usage is attributed to the current model across a mid-session switch', async () => {
+test('usage is attributed to the current model across a mid-session switch', zstdOptions, async () => {
   await withSessions([['dsh-model-switch.jsonl.zstd', 'proj-b']], async () => {
     const { graphJson, eventsJson } = await collect(PRICING);
 
@@ -92,7 +94,7 @@ test('usage is attributed to the current model across a mid-session switch', asy
   });
 });
 
-test('usage date comes from the event timestamp', async () => {
+test('usage date comes from the event timestamp', zstdOptions, async () => {
   await withSessions([['dsh-single-step.jsonl.zstd', 'proj-a']], async () => {
     const { graphJson, eventsJson } = await collect(PRICING);
     const event = eventsJson.events[0];
@@ -103,7 +105,7 @@ test('usage date comes from the event timestamp', async () => {
   });
 });
 
-test('event cost is derived from pricing data', async () => {
+test('event cost is derived from pricing data', zstdOptions, async () => {
   await withSessions([['dsh-single-step.jsonl.zstd', 'proj-a']], async () => {
     const { eventsJson } = await collect(PRICING);
     const event = eventsJson.events[0];
@@ -127,7 +129,7 @@ test('collect returns empty results when zstd decompression is unavailable', asy
   }
 });
 
-test('parseSessionFile tolerates corrupt frames and returns no records', async () => {
+test('parseSessionFile tolerates corrupt frames and returns no records', zstdOptions, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-corrupt-'));
   try {
     const good = zlib.zstdCompressSync(Buffer.from(JSON.stringify({
@@ -141,4 +143,104 @@ test('parseSessionFile tolerates corrupt frames and returns no records', async (
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+async function withTranscript(rows, work, encode = b => b) {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-regression-'));
+  const savedRoot = process.env.DSH_SESSIONS;
+  const file = join(root, 'project', 'session', 'session.jsonl');
+  mkdirSync(join(root, 'project', 'session'), { recursive: true });
+  writeFileSync(file, encode(Buffer.from(rows.map(row => JSON.stringify(row)).join('\n') + '\n')));
+  process.env.DSH_SESSIONS = root;
+  try { return await work(file); } finally {
+    if (savedRoot === undefined) delete process.env.DSH_SESSIONS;
+    else process.env.DSH_SESSIONS = savedRoot;
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const header = { type: 'session', id: 's', cwd: '/work/项目' };
+const usage = { inputTokens: 100, outputTokens: 20, cacheReadTokens: 500 };
+function message(seq, extra = {}) {
+  return { type: 'assistant/message', seq, time: T, data: {
+    turn: 1, step: seq, usage,
+    message: { id: `msg-${seq}`, source: { model: 'alias', replayState: { response: { responseModel: 'glm-5.3' } } } }
+  }, ...extra };
+}
+
+test('final messages replace streaming usage, count compaction, and use served model', async () => {
+  await withTranscript([header,
+    { type: 'assistant/chunk', seq: 1, time: T, data: { turn: 1, step: 2, chunk: { type: 'usage', usage } } },
+    message(2), message(2),
+    { type: 'compaction/summary', seq: 3, time: T, data: { compactionId: 'summary-1', usage,
+      message: { source: { model: 'glm-5.3' } } } }
+  ], async () => {
+    const result = await collect(PRICING);
+    assert.equal(result.eventsJson.events.length, 2);
+    assert.equal(result.graphJson.contributions[0].clients[0].tokens.input, 200);
+    assert.ok(result.eventsJson.events.every(e => e.model === 'glm-5.3'));
+    const total = result.eventsJson.events.reduce((sum, event) => sum + event.cost, 0);
+    assert.equal(result.graphJson.contributions[0].clients[0].cost, total);
+    assert.equal(result.modelsJson.entries[0].cost, total);
+    assert.deepEqual(await collect(PRICING), result);
+  });
+});
+
+test('fork seed is excluded and seconds, milliseconds and ISO timestamps agree', async () => {
+  await withTranscript([{ ...header, seedLength: 2 }, message(1), message(2, { time: T / 1000 }),
+    message(3, { time: new Date(T).toISOString() }), message(4, { time: 'invalid' })], async () => {
+    const { eventsJson } = await collect(PRICING);
+    assert.equal(eventsJson.events.length, 2);
+    assert.ok(eventsJson.events.every(event => event.eventTime === new Date(T).toISOString()));
+  });
+});
+
+test('plain transcripts work without Node zstd support', async () => {
+  const saved = zlib.zstdDecompressSync;
+  delete zlib.zstdDecompressSync;
+  try {
+    await withTranscript([header, message(1)], async () => {
+      assert.equal((await collect()).eventsJson.events.length, 1);
+    });
+  } finally { zlib.zstdDecompressSync = saved; }
+});
+
+test('multi-frame decoding preserves UTF-8 and complete usage before a torn tail', zstdOptions, async () => {
+  await withTranscript([header, message(1)], async file => {
+    const records = await parseSessionFile(file, 's');
+    assert.equal(records.length, 1);
+    assert.equal(records[0].workspace, '/work/项目');
+  }, bytes => {
+    const boundary = bytes.indexOf(Buffer.from('项目')) + 1;
+    return Buffer.concat([zlib.zstdCompressSync(bytes.subarray(0, boundary)),
+      zlib.zstdCompressSync(bytes.subarray(boundary)), Buffer.from([40, 181, 47, 253, 0])]);
+  });
+});
+
+test('magic bytes inside a raw zstd block do not split its frame', zstdOptions, async () => {
+  await withTranscript([header, message(1)], async file => {
+    assert.equal((await parseSessionFile(file, 's')).length, 1);
+  }, bytes => {
+    const payload = Buffer.concat([Buffer.from([40, 181, 47, 253, 10]), bytes]);
+    const frame = Buffer.alloc(12 + payload.length);
+    frame.set([40, 181, 47, 253, 0xa0]); // single segment, 4-byte content size
+    frame.writeUInt32LE(payload.length, 5);
+    frame.writeUIntLE((payload.length << 3) | 1, 9, 3); // last raw block
+    payload.copy(frame, 12);
+    return frame;
+  });
+});
+
+test('final usage retains the stream event key across incremental collection', async () => {
+  await withTranscript([header,
+    { type: 'assistant/chunk', seq: 1, time: T, data: { turn: 1, step: 2, chunk: { type: 'usage', usage } } }
+  ], async file => {
+    const first = await collect(PRICING);
+    appendFileSync(file, JSON.stringify(message(2)) + '\n');
+    const second = await collect(PRICING);
+    assert.equal(first.eventsJson.events.length, 1);
+    assert.equal(second.eventsJson.events.length, 1);
+    assert.equal(first.eventsJson.events[0].eventKey, second.eventsJson.events[0].eventKey);
+    assert.equal(second.eventsJson.events[0].model, 'glm-5.3');
+  });
 });

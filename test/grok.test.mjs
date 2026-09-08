@@ -263,3 +263,51 @@ test('parseSessionFile ignores malformed lines and non-turn rows', async () => {
     rmSync(dirname(file), { recursive: true, force: true });
   }
 });
+
+test('cache and reasoning splits preserve inclusive totals, including invalid subsets', async () => {
+  const ts = epochSeconds();
+  await withSessions([{ id: 'split', updates: [turnCompleted(ts, { modelUsage: {
+    normal: { inputTokens: 100, cachedReadTokens: 40, cacheCreationTokens: 25, outputTokens: 20, reasoningTokens: 10 },
+    oversized: { inputTokens: 100, cachedReadTokens: 200, cacheCreationTokens: 999, outputTokens: 20, reasoningTokens: 80 }
+  } })] }], async () => {
+    const { eventsJson } = await collect();
+    assert.deepEqual(eventsJson.events[0].tokens,
+      { input: 35, cacheRead: 40, cacheWrite: 25, output: 10, reasoning: 10 });
+    for (const event of eventsJson.events) {
+      assert.equal(Object.values(event.tokens).reduce((a, b) => a + b), 120);
+    }
+  });
+});
+
+test('same-second turns stay distinct, exact event replays dedupe, and invoice cost wins', async () => {
+  const ts = epochSeconds();
+  const first = turnCompleted(ts + 0.125, { modelUsage: { model: { inputTokens: 10, costUsdTicks: 185192000 } } });
+  first.params._meta = { eventId: 'reused-id' };
+  const second = turnCompleted(ts + 0.125, { modelUsage: { model: { inputTokens: 20, costUsdTicks: 0 } } });
+  second.params._meta = first.params._meta;
+  await withSessions([{ id: 'dedup', updates: [first, first, second] }], async () => {
+    const result = await collect();
+    assert.equal(result.eventsJson.events.length, 2);
+    assert.equal(new Set(result.eventsJson.events.map(e => e.eventKey)).size, 2);
+    assert.equal(result.eventsJson.events[0].eventTime, new Date((ts + 0.125) * 1000).toISOString());
+    assert.equal(result.eventsJson.events[0].cost, 0.0185192);
+    assert.equal(result.eventsJson.events[1].cost, 0);
+    assert.equal(result.graphJson.contributions[0].clients[0].tokens.input, 30);
+    assert.equal(result.modelsJson.entries[0].cost, 0.0185192);
+    assert.deepEqual(await collect(), result, 'cached rerun must produce the same result');
+  });
+});
+
+test('fallback picks the latest timestamp and updates when only metadata changes', async () => {
+  const ts = epochSeconds();
+  await withSessions([{ id: 'metadata', updates: [turnCompleted(ts * 1000, { inputTokens: 10 })], events: [
+    { ts: ts - 1, type: 'turn_started', model_id: 'latest' },
+    { ts: ts - 30, type: 'turn_started', model_id: 'old' },
+    { ts: ts + 30, type: 'turn_started', model_id: 'future' }
+  ] }], async () => {
+    assert.equal((await collect()).eventsJson.events[0].model, 'latest');
+    const dir = join(process.env.GROK_HOME, 'sessions', encodeURIComponent('/home/dev/project'), 'metadata');
+    writeFileSync(join(dir, 'events.jsonl'), JSON.stringify({ ts: ts - 1, type: 'turn_started', model_id: 'corrected-model' }));
+    assert.equal((await collect()).eventsJson.events[0].model, 'corrected-model');
+  });
+});

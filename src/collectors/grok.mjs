@@ -28,7 +28,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'grok';
 export const SOURCE_LABEL = 'Grok CLI';
-const CACHE_VERSION = 1;   // bump when parseSessionFile behavior or output changes
+const CACHE_VERSION = 2;   // bump when parseSessionFile behavior or output changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -115,13 +115,16 @@ function addInto(agg, t) {
 }
 
 function bucketToTokens(bucket) {
-  const cachedRead = pos(bucket.cachedReadTokens);
-  const reasoning = pos(bucket.reasoningTokens);
+  const input = pos(bucket.inputTokens);
+  const output = pos(bucket.outputTokens);
+  const cachedRead = Math.min(input, pos(bucket.cachedReadTokens));
+  const cacheWrite = Math.min(input - cachedRead, pos(bucket.cacheCreationTokens));
+  const reasoning = Math.min(output, pos(bucket.reasoningTokens));
   return {
-    input: Math.max(0, pos(bucket.inputTokens) - cachedRead),
-    output: Math.max(0, pos(bucket.outputTokens) - reasoning),
+    input: input - cachedRead - cacheWrite,
+    output: output - reasoning,
     cacheRead: cachedRead,
-    cacheWrite: pos(bucket.cacheCreationTokens),
+    cacheWrite,
     reasoning
   };
 }
@@ -145,7 +148,7 @@ async function parseEventsFile(filePath) {
     if (!line) continue;
     let entry;
     try { entry = JSON.parse(line); } catch { continue; }
-    if (entry.type !== 'turn_started') continue;
+    if (entry?.type !== 'turn_started') continue;
     const ms = typeof entry.ts === 'number'
       ? (entry.ts < 10_000_000_000 ? entry.ts * 1000 : entry.ts)
       : Date.parse(entry.ts || '');
@@ -167,8 +170,12 @@ async function readSummaryModel(sessionDir) {
 
 function modelFromTurnStarted(records, turnMs) {
   let match = null;
+  let latest = -Infinity;
   for (const record of records) {
-    if (record.ts <= turnMs && record.modelId) match = record.modelId;
+    if (record.ts <= turnMs && record.ts >= latest && record.modelId) {
+      match = record.modelId;
+      latest = record.ts;
+    }
   }
   return match;
 }
@@ -190,36 +197,46 @@ export async function parseSessionFile(filePath, workspace) {
   let fallbackRecords = null;
   let fallbackSummaryModel = null;
 
-  for (const raw of text.split('\n')) {
+  for (const [lineIndex, raw] of text.split('\n').entries()) {
     const line = raw.trim();
     if (!line) continue;
 
     let entry;
     try { entry = JSON.parse(line); } catch { continue; }
 
-    const update = entry.params?.update;
+    const update = entry?.params?.update;
     if (update?.sessionUpdate !== 'turn_completed') continue;
     const usage = update.usage;
     if (!usage) continue;   // cancelled/aborted turns carry no usage
 
-    const timestamp = pos(entry.timestamp);
-    if (!timestamp) continue;
+    const rawTime = entry.timestamp;
+    const turnMs = typeof rawTime === 'number'
+      ? (rawTime < 1e12 ? rawTime * 1000 : rawTime)
+      : Date.parse(rawTime || '');
+    if (!Number.isFinite(turnMs) || turnMs <= 0 || turnMs > 8.64e15) continue;
+    const timestamp = turnMs / 1000;
 
     const sessionId = entry.params?.sessionId || basename(sessionDir || '') || 'unknown';
     const modelUsage = usage.modelUsage && typeof usage.modelUsage === 'object'
       ? Object.entries(usage.modelUsage)
       : [];
 
-    const turnMs = timestamp * 1000;
-    const emit = (model, bucket) => {
+    const emit = (rawModel, bucket) => {
+      if (!bucket || typeof bucket !== 'object') return;
+      const model = normalizeModelForGrouping(rawModel);
       const tokens = bucketToTokens(bucket);
       if (tokensIsZero(tokens)) return;
-      events.push({ timestamp, sessionId, workspace, model, tokens });
+      const ticks = bucket.costUsdTicks;
+      const recordedCost = typeof ticks === 'number' && Number.isFinite(ticks) && ticks >= 0
+        ? ticks / 1e10 : null;
+      const eventKey = JSON.stringify([sessionId, entry.params?._meta?.eventId ?? `line:${lineIndex}`,
+        timestamp, rawModel, tokens]);
+      events.push({ timestamp, sessionId, workspace, model, tokens, eventKey, recordedCost });
     };
 
     if (modelUsage.length > 0) {
       for (const [modelName, bucket] of modelUsage) {
-        emit(normalizeModelForGrouping(modelName), bucket);
+        emit(modelName, bucket);
       }
       continue;
     }
@@ -235,7 +252,7 @@ export async function parseSessionFile(filePath, workspace) {
     const fallbackModel = modelFromTurnStarted(fallbackRecords || [], turnMs)
       || fallbackSummaryModel
       || 'unknown';
-    emit(normalizeModelForGrouping(fallbackModel), usage);
+    emit(fallbackModel, usage);
   }
 
   return events;
@@ -250,21 +267,26 @@ export async function collect(pricingData = null) {
   const wmMap = new Map();      // "workspace::model" -> aggregated
   const events = [];
 
+  const seenEventKeys = new Set();
+
   for (const { sessionDir, workspace } of await discoverSessionDirs()) {
     const parsedEvents = await cachedParse(
       CLIENT_KEY, CACHE_VERSION, join(sessionDir, 'updates.jsonl'),
-      fp => parseSessionFile(fp, workspace)
+      fp => parseSessionFile(fp, workspace),
+      [join(sessionDir, 'events.jsonl'), join(sessionDir, 'summary.json')]
     );
 
-    for (const { timestamp, sessionId, model, tokens } of parsedEvents) {
+    for (const { timestamp, sessionId, model, tokens, eventKey, recordedCost } of parsedEvents) {
+      if (seenEventKeys.has(eventKey)) continue;
+      seenEventKeys.add(eventKey);
       const ms = timestamp * 1000;
       const date = localDateFromTimestamp(timestamp);
-      const cost = calculateCost(model, tokens, pricingData, null, { tiered: false });
+      const cost = recordedCost ?? calculateCost(model, tokens, pricingData, null, { tiered: false });
 
       if (ms >= EVENT_CUTOFF_MS) {
         events.push({
           client: CLIENT_KEY,
-          eventKey: [sessionId, timestamp, model].join('::'),
+          eventKey,
           eventTime: new Date(ms).toISOString(),
           usageDate: date,
           sessionId,
