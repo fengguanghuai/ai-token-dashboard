@@ -10,7 +10,7 @@ import { sourceIcon, sourceIconScale } from './source-icons.js';
 function SourceTag({ source }) {
   const icon = sourceIcon(source);
   return (
-    <span className="tag">
+    <span className="tag" title={source}>
       {icon
         ? <img className="tag-icon" src={icon} alt="" style={{ transform: `scale(${sourceIconScale(source)})` }} />
         : <span className="tag-dot" style={{ background: U.getSourceColor(source) }}/>}
@@ -172,7 +172,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
         return (
           <span>
             <span className="share-bar"><span style={{width: `${Math.min(100, p)}%`, background: U.getSourceColor(r.source)}}/></span>
-            <span className="share-pct">{p.toFixed(1)}%</span>
+            <span className="share-pct">{U.usageShare(r.totalTokens, totalTokens)}</span>
           </span>
         );
       }, width: 180
@@ -232,10 +232,12 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
     { field: 'source', title: '来源', render: r => (
       <SourceTag source={r.source} />
     ), width: 140 },
-    { field: 'device', title: '设备', render: r => <span className="muted">{r.device}</span>, width: 200 },
+    { field: 'device', title: '设备', render: r => <span className="muted run-device" title={r.device}>{r.device}</span>, width: 200 },
     { field: 'status', title: '状态', render: r => (
-      <span className={`status-badge status-${r.status}`}>{r.status}</span>
-    ), width: 90 },
+      <span className={`status-badge status-${r.status}`} title={r.status}>
+        {({ ok: '采集成功', empty: '未采集到用量', error: '采集失败', warn: '采集警告', skip: '已跳过' })[r.status] || r.status}
+      </span>
+    ), width: 140 },
     { field: 'message', title: '说明', render: r => (
       <span title={r.message} style={{
         color: 'var(--text-2)', fontSize: 12,
@@ -257,7 +259,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
   };
 
   return (
-    <div className="panel">
+    <div className={`panel table-panel ${tab === 'runs' ? 'table-panel-runs' : ''}`}>
       <div className="panel-header" style={{marginBottom: 14}}>
         <div className="panel-tabs">
           {TABS.map(t => (

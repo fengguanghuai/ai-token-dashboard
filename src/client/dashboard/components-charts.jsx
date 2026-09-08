@@ -264,7 +264,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
     let v = 0;
     for (const r of rows) if (r.source === src) v += r.totalTokens;
     return { name: src, value: v, color: U.getSourceColor(src) };
-  }).sort((a, b) => b.value - a.value);
+  }).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
 
   const sum = data.reduce((s, d) => s + d.value, 0);
 
@@ -282,7 +282,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
       formatter: p => `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>
         <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
-        <div style="font-size:11px;color:${pal.tooltipMuted}">${(p.percent || 0).toFixed(1)}%</div>`
+        <div style="font-size:11px;color:${pal.tooltipMuted}">${U.usageShare(p.value, sum).replace('<', '&lt;')}</div>`
     },
     series: [{
       type: 'pie',
@@ -373,7 +373,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
               <span className="legend-swatch" style={{background: d.color}}/>
               <span className="legend-name" title={d.name}>{d.name}</span>
               <span className="legend-val">{U.compactCN(d.value)}</span>
-              <span className="legend-pct">{sum ? ((d.value / sum) * 100).toFixed(1) : 0}%</span>
+              <span className="legend-pct">{U.usageShare(d.value, sum)}</span>
             </div>
           ))}
         </div>

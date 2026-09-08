@@ -199,7 +199,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport, quota }) {
+function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, quota }) {
   const RANGES = [
     { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
@@ -282,18 +282,22 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
 
       <div className="filter-row">
         <div className="filter-group filter-group-sources">
-          <span className="filter-label">来源</span>
-          {allSources.map(s => (
+          <span className="filter-label" title="当前时间、设备和模型条件下有 Token 的来源；已选无用量项保留以便取消">来源</span>
+          {sourceOptions.map(({ source: s, hasUsage }) => (
             <button key={s}
               className={`pill ${f.sources.has(s) ? 'active' : ''}`}
+              title={hasUsage ? `${s} · 当前筛选下有用量` : `${s} · 当前筛选下无用量，点击取消选择`}
+              aria-pressed={f.sources.has(s)}
               style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
               onClick={() => toggleSet('sources', s)}>
               {sourceIcon(s)
                 ? <img className="pill-icon" src={sourceIcon(s)} alt="" style={{ transform: `scale(${sourceIconScale(s)})` }} />
                 : <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>}
               {s}
+              {!hasUsage && <span className="source-empty-note">无用量</span>}
             </button>
           ))}
+          {allSources.length === 0 && <span className="muted">当前筛选下暂无用量</span>}
         </div>
       </div>
 
