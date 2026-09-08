@@ -1,3 +1,5 @@
+
+
 # AI Token Dashboard
 
 [English](README.en.md) | **中文**
@@ -172,7 +174,7 @@ INGEST_TOKEN="your-secret-token" docker compose up -d
 
 服务内置定时采集能力，默认关闭。开启后，服务会按配置间隔自动执行一次本机采集；Docker 和普通 `npm run serve` 启动走的是同一套逻辑。
 
-如果用 Docker 采集，需要把宿主机的 AI 工具日志目录挂载进容器。`docker-compose.yml` 已内置相关环境变量和挂载，默认每 5 分钟运行一次采集，并写入同一个 `./data/usage.sqlite`。
+如果用 Docker 采集，需要把宿主机的 AI 工具日志目录挂载进容器。`docker-compose.yml` 已内置相关环境变量和挂载，默认采集间隔为 5 分钟（默认未启用定时采集），并写入同一个 `./data/usage.sqlite`。
 
 Linux/macOS 示例：
 
