@@ -51,6 +51,11 @@
       "roots": [
         "~/.dsh/sessions"
       ]
+    },
+    "pi": {
+      "roots": [
+        "~/.pi/agent/sessions"
+      ]
     }
   }
 }

@@ -57,18 +57,6 @@ const CURSOR_OVERRIDES = {
   'composer-2-fast':      { input: 1.5e-6,  output: 7.5e-6,  cacheRead: 3.5e-7  },
 };
 
-/**
- * DeepSeek official compatibility aliases can lag in upstream pricing caches.
- * Prices are per-token ($/1M ÷ 1_000_000).
- * Source: https://api-docs.deepseek.com/quick_start/pricing
- */
-const DEEPSEEK_OVERRIDES = {
-  'deepseek-chat': { input: 1.4e-7, output: 2.8e-7, cacheRead: 2.8e-9 },
-  'deepseek-reasoner': { input: 1.4e-7, output: 2.8e-7, cacheRead: 2.8e-9 },
-  'deepseek-v4-flash': { input: 1.4e-7, output: 2.8e-7, cacheRead: 2.8e-9 },
-  'deepseek-v4-pro': { input: 4.35e-7, output: 8.7e-7, cacheRead: 3.625e-9 }
-};
-
 // ---------------------------------------------------------------------------
 // In-memory singleton
 // ---------------------------------------------------------------------------
@@ -245,8 +233,6 @@ function lookupPricing(modelId, pricingData, provider = null) {
   const datasets = splitPricingData(pricingData);
   const providerHint = canonicalProvider(provider) || inferProviderFromModel(id);
   const candidates = modelCandidates(id, providerHint);
-  const deepseekOverride = deepseekPricingOverride(candidates);
-  if (deepseekOverride) return deepseekOverride;
 
   let litellmHit = null;
   if (datasets.litellm) {
@@ -419,12 +405,6 @@ async function loadOpenRouterCache() {
   return null;
 }
 
-function deepseekPricingOverride(candidates) {
-  return candidates.bareIds
-    .map(candidate => DEEPSEEK_OVERRIDES[bareModelId(candidate)])
-    .find(Boolean);
-}
-
 function shouldRefreshPricing() {
   return process.env.PRICING_REFRESH === '1' || process.env.PRICING_REFRESH === 'true';
 }
@@ -582,7 +562,7 @@ function litellmEntryToRates(entry) {
     outputAbove200k:    entry.output_cost_per_token_above_200k_tokens,
     outputAbove256k:    entry.output_cost_per_token_above_256k_tokens,
     outputAbove272k:    entry.output_cost_per_token_above_272k_tokens,
-    cacheRead:          entry.cache_read_input_token_cost ?? 0,
+    cacheRead:          entry.cache_read_input_token_cost ?? entry.input_cost_per_token_cache_hit ?? 0,
     cacheReadAbove200k: entry.cache_read_input_token_cost_above_200k_tokens,
     cacheReadAbove272k: entry.cache_read_input_token_cost_above_272k_tokens,
     cacheWrite:         entry.cache_creation_input_token_cost ?? 0,

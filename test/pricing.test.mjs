@@ -38,3 +38,18 @@ test('calculateCacheSavings is 0 with no cache tokens or unknown model', () => {
   assert.equal(calculateCacheSavings('test-cache-model', { input: 1000, output: 500 }, CACHE_PRICING_FIXTURE), 0);
   assert.equal(calculateCacheSavings('no-such-model-zzz-123', { input: 1, cacheRead: 1000 }, {}), 0);
 });
+
+test('DeepSeek prices come from the current dataset, including cache-hit aliases', () => {
+  const data = { 'deepseek-v4-flash': { input_cost_per_token: 4.4e-7,
+    output_cost_per_token: 1.32e-6, input_cost_per_token_cache_hit: 1.4e-8 } };
+  const cost = calculateCost('deepseek-v4-flash', { input: 1e6, output: 1e6, cacheRead: 1e6 }, data);
+  assert.ok(Math.abs(cost - 1.774) < 1e-12);
+  const updated = { 'deepseek-v4-flash': { ...data['deepseek-v4-flash'], input_cost_per_token: 5e-7 } };
+  assert.ok(Math.abs(calculateCost('deepseek-v4-flash', { input: 1e6 }, updated) - 0.5) < 1e-12);
+});
+
+test('canonical cache-read pricing, including zero, takes precedence over aliases', () => {
+  const data = { 'test-cache-model': { input_cost_per_token: 1e-6, output_cost_per_token: 2e-6,
+    cache_read_input_token_cost: 0, input_cost_per_token_cache_hit: 1e-7 } };
+  assert.equal(calculateCost('test-cache-model', { cacheRead: 1e6 }, data), 0);
+});

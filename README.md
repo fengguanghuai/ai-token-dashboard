@@ -23,7 +23,7 @@
 
 ## 功能特性
 
-- **多源采集** — 支持 Claude Code、Codex CLI、OpenCode、Gemini CLI、Hermes Agent、OpenClaw、Grok CLI、DeepSeek Harness
+- **多源采集** — 支持 Claude Code、Codex CLI、OpenCode、Gemini CLI、Hermes Agent、OpenClaw、Grok CLI、DeepSeek Harness、Pi Agent
 - **双视图** — 交互式用量看板（`/`）和适合阅读与打印的复盘页（`/review`）
 - **亮色 / 暗色主题** — 默认跟随系统，右上角一键切换，选择记在本机，两个页面共用
 - **成本追踪** — 基于随仓库提供的 LiteLLM + OpenRouter 定价缓存，按模型估算 token 费用
@@ -46,12 +46,17 @@
 | OpenClaw | `~/.openclaw/agents/` |
 | Grok CLI | `~/.grok/sessions/`（可用 `GROK_HOME` 指定 home） |
 | DeepSeek Harness (DSH) | `~/.dsh/sessions/`（可用 `DSH_HOME` 指定 home，或 `DSH_SESSIONS` 指定会话目录） |
+| Pi Agent | `~/.pi/agent/sessions/`（可用 `PI_CODING_AGENT_DIR` 指定 agent 目录，或 `PI_CODING_AGENT_SESSION_DIR` 指定会话目录） |
 
 只有实际安装了对应工具才会产生数据，未安装的会被静默跳过。
 
 Grok 按已完成回合的模型用量统计：缓存和 reasoning 从其所属的 input/output 中拆出，避免重复累计；优先使用日志中的 `costUsdTicks` 费用，没有记录时按定价表估算。
 
 DSH 支持明文 `session.jsonl` 和多帧 `session.jsonl.zstd`。优先采用最终消息用量，同时计入上下文压缩调用，排除 fork 继承的历史；旧版仅含流式 usage 的日志也能采集。DSH 费用按模型定价估算。压缩日志需要 Node 22.15+ 或 23.8+ 的 zstd API，不支持时提示并跳过压缩文件，明文日志仍可采集。
+
+Pi 读取 JSONL 中的 assistant 用量、显式 tool 用量及带 usage 的上下文压缩/分支摘要。reasoning 从 output 中拆出，避免重复累计；费用优先使用日志记录值，缺失时按模型价格估算。保留已发生调用的所有分支，只在父会话也位于扫描范围内且记录 ID、时间和用量匹配时排除 fork 复制的历史。
+
+使用 `npm run pricing:update` 更新随项目保存的价格快照。估算采用快照标准价格（包括 DeepSeek 的峰时标准价），不会自动按调用时段折扣，也不会重算数据库中已经保存的历史费用。
 
 ---
 

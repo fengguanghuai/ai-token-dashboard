@@ -24,6 +24,10 @@ npm run collect
 - Codex CLI：`~/.codex/sessions/`
 - Gemini CLI：`~/.gemini/tmp/`
 - OpenClaw：`~/.openclaw/agents/`、`~/.clawdbot/agents/`、`~/.moltbot/agents/`、`~/.moldbot/agents/`
+- OpenCode：`~/.local/share/opencode/`
+- Grok CLI：`~/.grok/sessions/`
+- DeepSeek Harness：`~/.dsh/sessions/`
+- Pi Agent：`~/.pi/agent/sessions/`；优先读取 `PI_CODING_AGENT_SESSION_DIR`，其次为 `PI_CODING_AGENT_DIR/sessions`，再使用 `collectors.pi.roots`
 
 ## 数据映射
 
