@@ -41,16 +41,16 @@ const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 const ZSTD_MAGIC = Buffer.from([0x28, 0xB5, 0x2F, 0xFD]);
 
-let zstdUnavailableWarned = false;
+const zstdUnavailableWarned = new Set();
 
 function hasZstdSupport() {
   return typeof zlib.zstdDecompressSync === 'function';
 }
 
-function warnZstdUnavailable() {
-  if (zstdUnavailableWarned) return;
-  zstdUnavailableWarned = true;
-  console.warn('[DeepSeek Harness] zstd unavailable (Node 22.15+ or 23.8+ required) — skipping compressed DSH sessions');
+function warnZstdUnavailable(label) {
+  if (zstdUnavailableWarned.has(label)) return;
+  zstdUnavailableWarned.add(label);
+  console.warn(`[${label}] zstd unavailable (Node 22.15+ or 23.8+ required) — skipping compressed sessions`);
 }
 
 // ---------------------------------------------------------------------------
@@ -89,10 +89,10 @@ async function collectZstdFiles(dir) {
 }
 
 /** Decompress a multi-frame zstd container into a single UTF-8 string. */
-function decodeZstdContainer(buf) {
+export function decodeZstdContainer(buf, label = SOURCE_LABEL) {
   if (!buf.subarray(0, 4).equals(ZSTD_MAGIC)) return buf.toString('utf8');
   if (!hasZstdSupport()) {
-    warnZstdUnavailable();
+    warnZstdUnavailable(label);
     return '';
   }
   // Node can stop after the first frame. Walk RFC 8878 frame/block lengths,

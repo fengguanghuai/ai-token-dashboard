@@ -7,7 +7,7 @@
  */
 
 import { existsSync } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -18,7 +18,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'opencode';
 export const SOURCE_LABEL = 'OpenCode';
-const CACHE_VERSION = 1;   // bump when parsed message shape changes
+const CACHE_VERSION = 2;   // bump when parsed message shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -143,12 +143,13 @@ function parseMessageObject(msg, fallbackId, fallbackSessionId, fallbackWorkspac
   const tokens = tokensFromMessage(msg);
   if (!tokens) return null;
 
-  const model = typeof msg.modelID === 'string' && msg.modelID.trim()
-    ? normalizeModelForGrouping(msg.modelID)
+  const modelId = msg.modelID || msg.model?.id || msg.model?.modelID;
+  const model = typeof modelId === 'string' && modelId.trim()
+    ? normalizeModelForGrouping(modelId)
     : null;
   if (!model) return null;
 
-  const provider = canonicalProvider(msg.providerID) || inferProviderFromModel(model) || 'unknown';
+  const provider = canonicalProvider(msg.providerID || msg.model?.providerID) || inferProviderFromModel(model) || 'unknown';
   const workspace = msg.path?.root || fallbackWorkspace || null;
   const timestamp = Number(msg.time?.created || 0);
 
@@ -188,40 +189,30 @@ function fingerprintFor(msg, tokens, model, provider) {
 function parseDbRows(dbPath) {
   let db;
   try {
-    db = new DatabaseSync(dbPath);
+    db = new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     return [];
   }
 
-  let rows;
+  const rows = [];
+  const workspaces = new Map();
   try {
-    rows = db.prepare(`
-      SELECT m.id, m.session_id, m.data, NULLIF(s.directory, '') AS workspace_root
-      FROM message m
-      LEFT JOIN session s ON s.id = m.session_id
-      WHERE json_extract(m.data, '$.role') = 'assistant'
-        AND json_extract(m.data, '$.tokens') IS NOT NULL
-      ORDER BY m.id, m.session_id
-    `).all();
-  } catch {
-    try {
-      rows = db.prepare(`
-        SELECT m.id, m.session_id, m.data, NULL AS workspace_root
-        FROM message m
-        WHERE json_extract(m.data, '$.role') = 'assistant'
-          AND json_extract(m.data, '$.tokens') IS NOT NULL
-        ORDER BY m.id, m.session_id
-      `).all();
-    } catch {
-      try { db.close(); } catch { /* ignore */ }
-      return [];
+    for (const table of ['session', 'session_v2']) {
+      try {
+        for (const row of db.prepare(`SELECT id, directory FROM ${table}`).all()) {
+          if (row.directory) workspaces.set(row.id, row.directory);
+        }
+      } catch { /* older stores may not have project metadata */ }
     }
-  }
-
-  try { db.close(); } catch { /* ignore */ }
-
+    for (const table of ['session_message', 'message']) {
+      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name));
+      if (!['id', 'session_id', 'data'].every(name => columns.has(name))) continue;
+      const type = columns.has('type') ? 'type' : 'NULL AS type';
+      const time = columns.has('time_created') ? 'time_created' : 'NULL AS time_created';
+      rows.push(...db.prepare(`SELECT id, session_id, data, ${type}, ${time} FROM ${table} ORDER BY id`).all());
+    }
+  } finally { db.close(); }
   const messages = [];
-  const fingerprintIndices = new Map();
 
   for (const row of rows) {
     let msg;
@@ -231,24 +222,13 @@ function parseDbRows(dbPath) {
       continue;
     }
 
-    const parsed = parseMessageObject(msg, row.id, row.session_id, row.workspace_root);
+    // New rows put the role outside the JSON payload and use a nested model.
+    if (!msg || typeof msg !== 'object') continue;
+    if (row.type != null && row.type !== 'assistant') continue;
+    msg = { ...msg, role: msg.role || row.type,
+      time: { ...msg.time, created: msg.time?.created ?? row.time_created } };
+    const parsed = parseMessageObject(msg, row.id, row.session_id, workspaces.get(row.session_id));
     if (!parsed) continue;
-
-    const existingIndex = fingerprintIndices.get(parsed.fingerprint);
-    if (existingIndex != null) {
-      const existing = messages[existingIndex];
-      if (!existing.dedupKey && parsed.dedupKey) existing.dedupKey = parsed.dedupKey;
-      if (!existing.workspace && parsed.workspace) {
-        existing.workspace = parsed.workspace;
-        existing.workspaceLabel = parsed.workspaceLabel;
-      } else if (existing.workspace && parsed.workspace && existing.workspace !== parsed.workspace) {
-        existing.workspace = null;
-        existing.workspaceLabel = null;
-      }
-      continue;
-    }
-
-    fingerprintIndices.set(parsed.fingerprint, messages.length);
     messages.push(parsed);
   }
 
@@ -257,7 +237,7 @@ function parseDbRows(dbPath) {
 
 async function parseLegacyJsonFile(filePath) {
   const msg = await safeReadJson(filePath);
-  const fallbackId = basename(filePath, '.json');
+  const fallbackId = `file:${await realpath(filePath).catch(() => filePath)}`;
   return parseMessageObject(msg, fallbackId, msg?.sessionID, msg?.path?.root);
 }
 
@@ -316,7 +296,7 @@ export async function collect(pricingData = null) {
   };
 
   for (const dbPath of await discoverDbPaths()) {
-    const messages = await cachedParse(CLIENT_KEY, CACHE_VERSION, dbPath, p => parseDbRows(p));
+    const messages = await cachedParse(CLIENT_KEY, CACHE_VERSION, dbPath, p => parseDbRows(p), [`${dbPath}-wal`]);
     for (const message of messages) addMessage(message);
   }
 

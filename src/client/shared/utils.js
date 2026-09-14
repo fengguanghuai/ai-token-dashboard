@@ -189,6 +189,22 @@ function filterTime(rows, f) {
   });
 }
 
+// Source choices follow the other filters, never their own selection.
+// Keep selected empty sources removable when the date/device/model changes.
+function sourceOptions(rows, f, precise = false) {
+  const scope = { ...f, sources: new Set() };
+  const matching = precise ? filterTime(rows, scope) : filterDaily(rows, scope);
+  const active = new Set(matching.filter(r => r.totalTokens > 0).map(r => r.source));
+  return sortSources([...new Set([...active, ...f.sources])])
+    .map(source => ({ source, hasUsage: active.has(source) }));
+}
+
+function usageShare(value, total) {
+  if (!(value > 0) || !(total > 0)) return '0%';
+  const percent = value / total * 100;
+  return percent < 0.1 ? '<0.1%' : `${percent.toFixed(1)}%`;
+}
+
 // Aggregate totals across rows
 function aggregateTotals(rows) {
   let total = 0, inp = 0, out = 0, cacheRd = 0, cacheCr = 0, reason = 0, cost = 0, saved = 0;
@@ -275,11 +291,30 @@ function sortSources(list) {
     (rank.get(a) ?? SOURCE_ORDER.length) - (rank.get(b) ?? SOURCE_ORDER.length));
 }
 
+// Custom chart tooltips render HTML, unlike React text children.
+function escapeHtml(value) {
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(value ?? '').replace(/[&<>"']/g, char => entities[char]);
+}
+
+function latestRuns(runs) {
+  const latest = new Map();
+  for (const run of runs) {
+    const key = JSON.stringify([run.source, run.device]);
+    const previous = latest.get(key);
+    if (!previous || String(run.collectedAt) > String(previous.collectedAt) ||
+      (run.collectedAt === previous.collectedAt && Number(run.id) > Number(previous.id))) latest.set(key, run);
+  }
+  return [...latest.values()];
+}
+
 export const U = {
+  latestRuns,
+  escapeHtml,
   PALETTE, PALETTE_FALLBACK, getSourceColor, sortSources,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,
   localDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,
-  filterDaily, filterTime, aggregateTotals, groupByDate, uniqueValues,
+  filterDaily, filterTime, sourceOptions, usageShare, aggregateTotals, groupByDate, uniqueValues,
   downloadCSV, projectLabel, alpha
 };

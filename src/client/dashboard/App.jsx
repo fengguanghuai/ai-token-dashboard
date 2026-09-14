@@ -3,6 +3,8 @@
    ============================================================= */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
+import { UsageNotes } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -243,7 +245,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
 
   // Build option lists
   const filterBaseRows = filters.precise && M.time.length ? M.time : M.daily;
-  const allSources = useMemo(() => U.sortSources(Array.from(new Set(filterBaseRows.map(r => r.source)))), [filterBaseRows]);
+  const sourceOptions = useMemo(() => U.sourceOptions(filterBaseRows, filters,
+    filters.precise && M.time.length > 0), [filterBaseRows, filters, M.time.length]);
+  const allSources = useMemo(() => sourceOptions.map(o => o.source), [sourceOptions]);
   const allDevices = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.device))), [filterBaseRows]);
   const allModels  = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.model))).filter(Boolean), [filterBaseRows]);
   const availableRange = useMemo(() => {
@@ -404,6 +408,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         f={filters}
         setF={setFilters}
         allSources={allSources}
+        sourceOptions={sourceOptions}
         allDevices={allDevices}
         allModels={allModels}
         availableRange={availableRange}
@@ -432,22 +437,28 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       {/* KPI row */}
       <div className="kpi-row">
         <KPI label="总 Token" value={U.compactCN(totals.totalTokens)}
+          numericValue={totals.totalTokens}
           sub="vs 上周期"
           delta={U.deltaPct(totals.totalTokens, compareData.totals?.totalTokens)}
           sparkValues={sparkValues} sparkColor="oklch(0.55 0.16 265)" />
         <KPI label="Output" value={U.compactCN(totals.outputTokens)}
+          numericValue={totals.outputTokens}
           sub="生成"
           delta={U.deltaPct(totals.outputTokens, compareData.totals?.outputTokens)}
           sparkValues={sparkBy('outputTokens')} sparkColor="oklch(0.60 0.15 295)" />
         <KPI label="Cache" value={U.compactCN(totals.cacheTokens)}
+          numericValue={totals.cacheTokens}
           sub={`命中 ${totals.cacheHitRate.toFixed(0)}%`}
           delta={U.deltaPct(totals.cacheTokens, compareData.totals?.cacheTokens)}
           sparkValues={sparkBy('cacheReadTokens')} sparkColor="oklch(0.65 0.11 200)" />
         <KPI label="估算费用" value={U.fmtUS.format(totals.costUSD)}
+          numericValue={totals.costUSD} format={U.fmtUS.format}
           sub="累计"
           delta={U.deltaPct(totals.costUSD, compareData.totals?.costUSD)}
           sparkValues={sparkBy('costUSD')} sparkColor="oklch(0.72 0.14 75)" />
       </div>
+
+      <UsageNotes rows={filtered} pricing={M.pricing} />
 
       {/* Charts grid */}
       <div className="grid">
@@ -499,6 +510,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
 
         <div className="col-12">
           <TablePanel
+            pricing={M.pricing}
             daily={filtered}
             sessions={filteredSessions}
             runs={filteredRuns}
@@ -508,7 +520,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         </div>
       </div>
 
-      <DrillDrawer drill={drill} daily={M.daily} onClose={() => setDrill(null)} />
+      <AnimatePresence>
+        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={M.daily} onClose={() => setDrill(null)} />}
+      </AnimatePresence>
     </div>
   );
 }

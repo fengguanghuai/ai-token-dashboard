@@ -64,7 +64,7 @@ try {
         output: Number(row.output_tokens),
         cacheRead: Number(row.cache_read_tokens),
         cacheWrite: Number(row.cache_creation_tokens),
-        reasoning: Number(row.reasoning_output_tokens)
+        reasoning: /^Codex CLI(?: \(JS\))?$/.test(row.source) ? 0 : Number(row.reasoning_output_tokens)
       }, pricingData, null, { tiered: false });
       const cost = hasCompleteEventCosts ? eventCost : estimatedCost;
 

@@ -7,6 +7,8 @@ import opencode from './icons/opencode.svg';
 import openclaw from './icons/openclaw.svg';
 import grok from './icons/grok.png';
 import deepseek from './icons/deepseek.png';
+// Official badge: https://pi.dev/favicon.svg (https://pi.dev/press-kit).
+import pi from './icons/pi.svg';
 
 const SOURCE_ICON = {
   'Claude Code': claude,
@@ -16,7 +18,8 @@ const SOURCE_ICON = {
   'OpenCode': opencode,
   'OpenClaw': openclaw,
   'Grok CLI': grok,
-  'DeepSeek Harness': deepseek
+  'DeepSeek Harness': deepseek,
+  'Pi Agent': pi
 };
 
 // Some icons have a lot of internal padding / a non-square viewBox and read

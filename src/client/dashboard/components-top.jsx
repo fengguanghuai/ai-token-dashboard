@@ -3,6 +3,8 @@
    ============================================================= */
 
 import { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
+import { AnimatedNumber } from './AnimatedNumber.jsx';
 import { U } from '../shared/utils.js';
 import { ThemeToggle } from '../shared/ThemeToggle.jsx';
 import { quotaWindowLabel, orderQuotaWindows } from '../shared/quota.js';
@@ -199,7 +201,8 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange, onExport, quota }) {
+function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, quota }) {
+  const reduceMotion = useReducedMotion();
   const RANGES = [
     { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
@@ -265,13 +268,20 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
       <div className="filter-row filter-row-primary">
         <div className="filter-group">
           <span className="filter-label">时间</span>
-          <div className="chip-row">
+          <LayoutGroup id="usage-date-range">
+          <div className="chip-row motion-chip-row">
             {RANGES.map(r => (
               <button key={r.id}
                 className={`chip ${f.rangeId === r.id ? 'active' : ''}`}
-                onClick={() => setRange(r)}>{r.label}</button>
+                aria-pressed={f.rangeId === r.id}
+                onClick={() => setRange(r)}>
+                {f.rangeId === r.id && <motion.span className="chip-active-surface"
+                  layoutId="date-selection" transition={{ type: 'spring', stiffness: 420, damping: 36 }} />}
+                <span className="chip-text">{r.label}</span>
+              </button>
             ))}
           </div>
+          </LayoutGroup>
           <DateRangeField
             start={f.startDate}
             end={f.endDate}
@@ -282,18 +292,29 @@ function FilterBar({ f, setF, allSources, allDevices, allModels, availableRange,
 
       <div className="filter-row">
         <div className="filter-group filter-group-sources">
-          <span className="filter-label">来源</span>
-          {allSources.map(s => (
-            <button key={s}
+          <span className="filter-label" title="当前时间、设备和模型条件下有 Token 的来源；已选无用量项保留以便取消">来源</span>
+          <AnimatePresence initial={false}>
+          {sourceOptions.map(({ source: s, hasUsage }) => (
+            <motion.button key={s} layout="position"
+              initial={{ opacity: 0, scale: reduceMotion ? 1 : 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: reduceMotion ? 1 : 0.94 }}
+              transition={{ duration: reduceMotion ? 0 : 0.22 }}
+              whileTap={{ scale: reduceMotion ? 1 : 0.97 }}
               className={`pill ${f.sources.has(s) ? 'active' : ''}`}
+              title={hasUsage ? `${s} · 当前筛选下有用量` : `${s} · 当前筛选下无用量，点击取消选择`}
+              aria-pressed={f.sources.has(s)}
               style={f.sources.has(s) ? {color: U.PALETTE[s] || ''} : {}}
               onClick={() => toggleSet('sources', s)}>
               {sourceIcon(s)
                 ? <img className="pill-icon" src={sourceIcon(s)} alt="" style={{ transform: `scale(${sourceIconScale(s)})` }} />
                 : <span className="pill-dot" style={{background: U.PALETTE[s] || ''}}/>}
               {s}
-            </button>
+              {!hasUsage && <span className="source-empty-note">无用量</span>}
+            </motion.button>
           ))}
+          </AnimatePresence>
+          {allSources.length === 0 && <span className="muted">当前筛选下暂无用量</span>}
         </div>
       </div>
 
@@ -577,22 +598,28 @@ function Delta({ value, suffix = '%', invert = false }) {
 // ───────────────────────────────────────────────────────────────
 // KPI card
 // ───────────────────────────────────────────────────────────────
-function KPI({ label, value, sub, delta, dotColor, sparkValues, sparkColor }) {
+function KPI({ label, value, numericValue, format = U.compactCN, sub, delta, dotColor, sparkValues, sparkColor }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <div className="kpi">
+    <motion.div className="kpi"
+      initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduceMotion ? 0 : 0.35 }}
+      whileHover={reduceMotion ? undefined : { y: -2 }}>
       <div className="kpi-label">
         <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
           {dotColor && <span className="dot" style={{color: dotColor}}/>}
           {label}
         </span>
       </div>
-      <div className="kpi-value">{value}</div>
+      <div className="kpi-value">{Number.isFinite(numericValue)
+        ? <AnimatedNumber value={numericValue} format={format} /> : value}</div>
       <div className="kpi-sub">
         {delta != null && <Delta value={delta}/>}
         <span>{sub}</span>
       </div>
       {sparkValues && <Spark values={sparkValues} color={sparkColor || 'var(--c-indigo)'}/>}
-    </div>
+    </motion.div>
   );
 }
 

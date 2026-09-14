@@ -433,10 +433,12 @@ export async function collect(pricingData = null) {
    */
   function accumulate(events) {
     for (const { sessionId, date, model, tokens } of events) {
+      const cost = calculateCost(model, tokens, pricingData);
       // Daily
       const dk = `${date}::${model}`;
       if (!dailyMap.has(dk)) dailyMap.set(dk, { date, model, ...zero(), cost: 0 });
       addInto(dailyMap.get(dk), tokens);
+      dailyMap.get(dk).cost += cost;
 
       // Workspace+model (use sessionId as workspace key for Gemini)
       const wmk = `${sessionId}::${model}`;
@@ -450,6 +452,7 @@ export async function collect(pricingData = null) {
         });
       }
       addInto(wmMap.get(wmk), tokens);
+      wmMap.get(wmk).cost += cost;
     }
   }
 
@@ -507,7 +510,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
           client:  CLIENT_KEY,
           modelId: row.model,
           tokens,
-          cost: calculateCost(row.model, tokens, pricingData, null, { tiered: false }),
+          cost: row.cost,
         };
       })
     }));
@@ -526,7 +529,7 @@ function buildOutput(dailyMap, wmMap, pricingData) {
       workspaceLabel: wm.workspaceLabel,
       model:          wm.model,
       ...tokens,
-      cost: calculateCost(wm.model, tokens, pricingData, null, { tiered: false }),
+      cost: wm.cost,
     };
   });
 

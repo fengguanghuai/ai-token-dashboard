@@ -103,5 +103,5 @@ export function inferProviderFromModel(model) {
  */
 export function tokenTotal(tokens, client = null) {
   const reasoning = client === 'codex' ? 0 : tokens.reasoning;
-  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite + reasoning;
+  return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite + reasoning + (tokens.unclassified || 0);
 }

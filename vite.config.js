@@ -7,8 +7,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          react: ['react', 'react-dom'],
-          echarts: ['echarts']
+          react: ['react', 'react-dom']
         }
       }
     },

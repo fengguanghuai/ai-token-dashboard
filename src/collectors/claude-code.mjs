@@ -17,7 +17,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 
 export const CLIENT_KEY = 'claude';
 export const SOURCE_LABEL = 'Claude Code';
-const CACHE_VERSION = 1;   // bump when parseSessionFile output shape changes
+const CACHE_VERSION = 2;   // bump when parseSessionFile output shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -143,7 +143,7 @@ async function parseSessionFile(filePath) {
 
   const records = [];
   const dedupIndex = new Map();
-  for (const line of text.split('\n')) {
+  for (const [lineIndex, line] of text.split('\n').entries()) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -155,9 +155,14 @@ async function parseSessionFile(filePath) {
     }
 
     // Only assistant turns carry usage information
-    if (obj.type !== 'assistant' || !obj.message?.usage) continue;
+    if (obj?.type !== 'assistant' || !obj.message?.usage) continue;
 
     const record = {
+      lineIndex,
+      messageId: obj.message.id || null,
+      requestId: obj.requestId || null,
+      sessionId: obj.sessionId || null,
+      sidechain: obj.isSidechain === true,
       timestamp: typeof obj.timestamp === 'string' ? obj.timestamp : null,
       model: obj.message.model || obj.model || 'unknown',
       usage: obj.message.usage,
@@ -185,10 +190,20 @@ async function parseSessionFile(filePath) {
 function dedupKeyForAssistant(obj) {
   const messageId = obj.message?.id;
   if (!messageId) return null;
-  return obj.requestId ? `${messageId}:${obj.requestId}` : `message:${messageId}`;
+  return JSON.stringify([obj.sessionId || '', messageId, obj.requestId || '']);
 }
 
 function mergeUsageMax(target, source) {
+  if (Array.isArray(source.iterations)) {
+    if (!Array.isArray(target.iterations)) target.iterations = [];
+    source.iterations.forEach((iteration, index) => {
+      if (!iteration || typeof iteration !== 'object') return;
+      const existing = target.iterations[index];
+      if (existing?.type === iteration.type && existing?.model === iteration.model) {
+        mergeUsageMax(existing.usage || existing, iteration.usage || iteration);
+      } else target.iterations[index] = structuredClone(iteration);
+    });
+  }
   for (const key of [
     'input_tokens',
     'output_tokens',
@@ -256,6 +271,7 @@ export async function collect(pricingData = null) {
   // workspaceModelKey ("workspaceDir::model") -> aggregated token counts
   const wmMap = new Map();
   const events = [];
+  const candidates = [];
 
   for (const root of await getScanRoots()) {
     const filePaths = await collectJsonlFiles(root.path);
@@ -265,9 +281,18 @@ export async function collect(pricingData = null) {
       const records = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, parseSessionFile);
 
       for (const record of records) {
-        const tokens = extractTokens(record.usage);
-        aggregateRecord({ ...record, tokens, workspaceKey, workspaceLabel, filePath }, dailyMap, wmMap, pricingData, events);
+        candidates.push({ ...record, usage: structuredClone(record.usage), workspaceKey, workspaceLabel, filePath });
       }
+    }
+  }
+  for (const record of dedupeRecords(candidates)) {
+    aggregateRecord(record, dailyMap, wmMap, pricingData, events);
+    const iterations = Array.isArray(record.usage.iterations) ? record.usage.iterations : [];
+    for (const [index, iteration] of iterations.entries()) {
+      if (iteration?.type !== 'advisor_message' || !iteration.model) continue;
+      const usage = iteration.usage || iteration;
+      aggregateRecord({ ...record, model: iteration.model, usage, costUSD: 0,
+        identity: `${record.identity}:advisor:${index}` }, dailyMap, wmMap, pricingData, events);
     }
   }
 
@@ -329,6 +354,35 @@ function workspaceKeyFromPath(root, filePath) {
   return `transcripts:${firstSegment || filePath}`;
 }
 
+/** Collapse stored copies without merging gateway IDs from unrelated sessions. */
+function dedupeRecords(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const scope = record.sessionId || record.filePath;
+    const key = JSON.stringify([scope, record.messageId || record.filePath, record.messageId ? '' : record.lineIndex]);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  return [...groups.entries()].flatMap(([key, copies]) => {
+    const parent = copies.find(record => !record.sidechain);
+    // A side conversation may copy a parent's response under a new request ID.
+    const admitted = parent && copies.some(record => record.sidechain)
+      ? copies.filter(record => !record.sidechain) : copies;
+    const requests = new Map();
+    for (const record of admitted) {
+      const id = record.requestId || '';
+      const existing = requests.get(id);
+      if (existing) {
+        mergeUsageMax(existing.usage, record.usage);
+        existing.costUSD = Math.max(existing.costUSD, record.costUSD);
+      } else {
+        requests.set(id, { ...record, identity: `${key}:${id}` });
+      }
+    }
+    return [...requests.values()];
+  });
+}
+
 function aggregateRecord(record, dailyMap, wmMap, pricingData, events) {
   const date = localDateFromTimestamp(record.timestamp);
   const model = normalizeModelForGrouping(record.model);
@@ -339,7 +393,7 @@ function aggregateRecord(record, dailyMap, wmMap, pricingData, events) {
   if (keepTimeEvent(record.timestamp)) {
     events.push({
       client: CLIENT_KEY,
-      eventKey: `${record.filePath || record.workspaceKey}:${record.timestamp || ''}:${model}:${JSON.stringify(tokens)}`,
+      eventKey: record.identity || `${record.filePath || record.workspaceKey}:${record.timestamp || ''}:${model}:${JSON.stringify(tokens)}`,
       eventTime: record.timestamp,
       usageDate: date,
       sessionId: record.filePath,
