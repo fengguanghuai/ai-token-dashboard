@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
+import { UsageNotes } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -457,6 +458,8 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
           sparkValues={sparkBy('costUSD')} sparkColor="oklch(0.72 0.14 75)" />
       </div>
 
+      <UsageNotes rows={filtered} pricing={M.pricing} />
+
       {/* Charts grid */}
       <div className="grid">
         <div className="col-8">
@@ -507,6 +510,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
 
         <div className="col-12">
           <TablePanel
+            pricing={M.pricing}
             daily={filtered}
             sessions={filteredSessions}
             runs={filteredRuns}

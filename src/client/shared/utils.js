@@ -297,7 +297,19 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => entities[char]);
 }
 
+function latestRuns(runs) {
+  const latest = new Map();
+  for (const run of runs) {
+    const key = JSON.stringify([run.source, run.device]);
+    const previous = latest.get(key);
+    if (!previous || String(run.collectedAt) > String(previous.collectedAt) ||
+      (run.collectedAt === previous.collectedAt && Number(run.id) > Number(previous.id))) latest.set(key, run);
+  }
+  return [...latest.values()];
+}
+
 export const U = {
+  latestRuns,
   escapeHtml,
   PALETTE, PALETTE_FALLBACK, getSourceColor, sortSources,
   fmt, fmtUS, fmtUS4,

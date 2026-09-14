@@ -2,10 +2,11 @@
    Tables — sortable, searchable, drill-down rows
    ============================================================= */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { U } from '../shared/utils.js';
 import { sourceIcon, sourceIconScale } from './source-icons.js';
+import { paginateRows } from '../shared/pagination.js';
 
 // Source cell: brand icon when available, otherwise the colored dot.
 function SourceTag({ source }) {
@@ -23,6 +24,9 @@ function SourceTag({ source }) {
 // Generic data table
 function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, selectedKey, getKey, height, emptyText }) {
   const [sortBy, setSortBy] = useState(initialSort || { field: null, dir: 'desc' });
+  const [page, setPage] = useState(1);
+  const wrapRef = useRef(null);
+  useEffect(() => setPage(1), [rows, search]);
 
   const filtered = useMemo(() => {
     if (!search) return rows;
@@ -52,6 +56,7 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
   }, [filtered, sortBy, columns]);
 
   const toggleSort = (field) => {
+    setPage(1);
     setSortBy(prev =>
       prev.field === field
         ? { field, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
@@ -59,8 +64,12 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
     );
   };
 
+  const pagination = paginateRows(sorted, page);
+  useEffect(() => { if (wrapRef.current) wrapRef.current.scrollTop = 0; }, [pagination.page, search, sortBy]);
+
   return (
-    <div className="table-wrap" style={{maxHeight: height, overflow: 'auto'}}>
+    <>
+    <div ref={wrapRef} className="table-wrap" style={{maxHeight: height, overflow: 'auto'}}>
       <table className="dt">
         <thead>
           <tr>
@@ -85,9 +94,9 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
         </thead>
         <tbody>
           {sorted.length === 0 && (
-            <tr><td colSpan={columns.length} style={{textAlign:'center', padding:'30px', color:'var(--muted)'}}>{emptyText || '暂无数据'}</td></tr>
+            <tr><td colSpan={columns.length} style={{textAlign:'center', padding:'30px', color:'var(--muted)'}}>{search ? '没有匹配的记录，请调整搜索条件' : emptyText || '暂无数据'}</td></tr>
           )}
-          {sorted.map((r, i) => {
+          {pagination.rows.map((r, i) => {
             const k = getKey ? getKey(r) : i;
             return (
               <tr key={k}
@@ -105,15 +114,26 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
         </tbody>
       </table>
     </div>
+    <nav className="table-pagination" aria-label="表格分页">
+      <span role="status">{pagination.start}–{pagination.end} / {pagination.total} 条</span>
+      <span className="table-pagination-actions">
+        <button className="btn" disabled={pagination.page === 1} onClick={() => setPage(pagination.page - 1)}>上一页</button>
+        <span>{pagination.page} / {pagination.pageCount} 页</span>
+        <button className="btn" disabled={pagination.page === pagination.pageCount} onClick={() => setPage(pagination.page + 1)}>下一页</button>
+      </span>
+    </nav>
+    </>
   );
 }
 
 // ───────────────────────────────────────────────────────────────
 // Combined tabbed table panel
 // ───────────────────────────────────────────────────────────────
-function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
+function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pricing }) {
   const [tab, setTab] = useState('sources');
   const [search, setSearch] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const latest = useMemo(() => U.latestRuns(runs), [runs]);
   const formatRunTime = r => U.formatTs(r.collectedAt);
 
   // Aggregate by source
@@ -190,7 +210,9 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
     { field: 'source', title: '来源', render: r => (
       <SourceTag source={r.source} />
     )},
-    { field: 'model', title: '模型', render: r => <span className="mono">{r.model}</span> },
+    { field: 'model', title: '模型', render: r => <span className="mono">{r.model}
+      {pricing?.models?.[r.model] === false && <small className="muted" title="当前目录未匹配价格，已有记录费用仍保留"> · 未匹配价格</small>}
+    </span> },
     { field: 'dayCount', title: '活跃天', hozAlign: 'right', render: r => r.dayCount, width: 80 },
     { field: 'inputTokens', title: 'Input', hozAlign: 'right', render: r => U.compact(r.inputTokens), width: 90 },
     { field: 'outputTokens', title: 'Output', hozAlign: 'right', render: r => U.compact(r.outputTokens), width: 90 },
@@ -253,7 +275,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
   if (tab === 'sources')  { columns = sourceColumns;  rows = bySource;  initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '当前筛选下无来源'; }
   if (tab === 'models')   { columns = modelColumns;   rows = byModel;   initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '当前筛选下无模型'; }
   if (tab === 'sessions') { columns = sessionColumns; rows = sessions;  initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '暂无会话数据'; }
-  if (tab === 'runs')     { columns = runColumns;     rows = runs;      initialSort = { field: 'collectedAt', dir: 'desc' }; emptyText = '暂无采集记录'; }
+  if (tab === 'runs')     { columns = runColumns;     rows = showHistory ? runs : latest; initialSort = { field: 'collectedAt', dir: 'desc' }; emptyText = '暂无采集记录'; }
 
   const exportCSV = () => {
     U.downloadCSV(`tokens-${tab}-${U.daysAgo(0)}.csv`, rows, columns);
@@ -271,7 +293,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
         </div>
         <div className="panel-actions">
           <input className="search-input" placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)}/>
-          <button className="btn" onClick={exportCSV}>
+          <button className="btn" onClick={exportCSV} title="导出当前列表全部记录，不受分页和搜索影响">
             <svg className="icon" viewBox="0 0 16 16" fill="none">
               <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -279,8 +301,13 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
           </button>
         </div>
       </div>
+      {tab === 'runs' && <div className="collection-explainer">
+        <label><input type="checkbox" checked={showHistory} onChange={e => setShowHistory(e.target.checked)} /> 展开历史记录（{runs.length} 条）</label>
+        <p>默认按工具和设备显示最近一次结果（{latest.length} 项）；只受来源和设备筛选影响。历史记录最多保留接口返回的最近 500 条。</p>
+        <p>没有用量不代表未安装。采集失败请查看说明，检查日志目录和读取权限后重试；最近采集时间不代表最后使用时间。</p>
+      </div>}
       <DataTable
-        key={tab}
+        key={`${tab}-${showHistory}`}
         rows={rows}
         columns={columns}
         initialSort={initialSort}

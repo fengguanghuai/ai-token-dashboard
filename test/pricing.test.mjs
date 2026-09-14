@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculateCacheSavings, calculateCost, mergePricingSnapshots } from '../src/pricing.mjs';
+import { calculateCacheSavings, calculateCost, mergePricingSnapshots, hasModelPricing } from '../src/pricing.mjs';
+
+test('pricing availability distinguishes missing models from zero-priced models', () => {
+  assert.equal(hasModelPricing('missing-test-model', {}), false);
+  assert.equal(hasModelPricing('free-test-model', {
+    'free-test-model': { input_cost_per_token: 0, output_cost_per_token: 0 }
+  }), true);
+});
 
 test('calculateCost returns 0 when pricing data is missing', () => {
   assert.equal(calculateCost('gpt-4o', { input: 1000, output: 500 }, null), 0);

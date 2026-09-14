@@ -10,7 +10,7 @@ import {
 } from './db.mjs';
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage } from './db-batch.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
-import { calculateCacheSavings, loadPricing } from './pricing.mjs';
+import { calculateCacheSavings, loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs';
 import { queryQuota } from './quota.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
@@ -129,6 +129,11 @@ async function handleApi(req, url, res) {
 
     sendJson(res, {
       // Enrich daily rows with projectPath from session data
+      pricing: {
+        primarySnapshotAt: pricingSnapshotTime(),
+        models: Object.fromEntries([...new Set(rawDaily.map(d => d.model))]
+          .map(model => [model, hasModelPricing(model, pricingData)]))
+      },
       daily: rawDaily.map(d => ({
         ...d,
         projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null,
@@ -145,7 +150,7 @@ async function handleApi(req, url, res) {
       runs: rawRuns.map(r => ({
         ...r,
         message: r.message ? r.message.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim() : '',
-        device: r.device ? r.device.replace(/\.local$/, '').replace(/^(.{30}).+$/, '$1…') : r.device
+        device: r.device
       }))
     });
     return;

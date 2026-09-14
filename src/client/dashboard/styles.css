@@ -589,6 +589,15 @@ button, input, select { font-family: inherit; color: inherit; }
   transition: background 120ms ease, color 120ms ease;
 }
 
+.usage-notes { margin-bottom: 16px; padding: 12px 16px; font-size: 12px; }
+.usage-notes summary { cursor: pointer; line-height: 1.8; }
+.usage-notes-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px; }
+.usage-notes h3 { font-size: 13px; margin: 12px 0 8px; }
+.usage-notes p, .collection-explainer p { line-height: 1.7; color: var(--text-2); overflow-wrap: anywhere; }
+.collection-explainer { font-size: 12px; margin-bottom: 12px; }
+.table-pagination { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; font-size: 12px; color: var(--text-2); }
+.table-pagination-actions { display: flex; align-items: center; gap: 10px; }
+.table-pagination .btn:disabled { opacity: .4; cursor: not-allowed; }
 .chip:hover { color: var(--text); }
 .motion-chip-row .chip { position: relative; }
 .motion-chip-row .chip.active { background: transparent; box-shadow: none; }

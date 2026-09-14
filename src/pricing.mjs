@@ -161,6 +161,14 @@ async function preserveRetiredPricing(path, fresh) {
  * @param {{ tiered?: boolean }} [options]  Set tiered=false when tokens are already aggregated
  * @returns {number}  Cost in USD (0 if model unknown)
  */
+export function hasModelPricing(model, pricingData, provider = null) {
+  return lookupPricingCached(model, pricingData, provider) != null;
+}
+
+export function pricingSnapshotTime() {
+  return _pricingData?.fetchedAt || null;
+}
+
 export function calculateCost(model, tokens, pricingData, provider = null, options = {}) {
   const { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, reasoning = 0 } = tokens;
   const p = lookupPricingCached(model, pricingData, provider);

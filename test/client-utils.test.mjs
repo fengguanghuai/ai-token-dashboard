@@ -15,6 +15,17 @@ const sourceFilters = (extra = {}) => ({
   sources: new Set(), devices: new Set(), models: new Set(), ...extra
 });
 
+test('latest collection runs preserve full device identity and resolve timestamp ties', () => {
+  const rows = [
+    { id: 1, source: 'Pi', device: 'a', collectedAt: '2026-09-01' },
+    { id: 2, source: 'Pi', device: 'a', collectedAt: '2026-09-02' },
+    { id: 3, source: 'Pi', device: 'b', collectedAt: '2026-09-01' },
+    { id: 4, source: 'Pi', device: 'a', collectedAt: '2026-09-02' }
+  ];
+  assert.deepEqual(U.latestRuns(rows).map(r => r.id), [4, 3]);
+  assert.deepEqual(U.latestRuns([]), []);
+});
+
 test('source options exclude historical and zero-token rows, independently of source selection', () => {
   const rows = [
     { source: 'Codex CLI', usageDate: '2026-09-08', totalTokens: 100 },

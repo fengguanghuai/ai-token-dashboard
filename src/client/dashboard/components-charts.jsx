@@ -3,7 +3,6 @@
    ============================================================= */
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import * as echarts from 'echarts';
 import { U } from '../shared/utils.js';
 import { EChart } from '../shared/echart.jsx';
 import { Delta, Spark } from './components-top.jsx';
