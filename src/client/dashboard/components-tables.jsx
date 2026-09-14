@@ -3,6 +3,7 @@
    ============================================================= */
 
 import { useEffect, useMemo, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { U } from '../shared/utils.js';
 import { sourceIcon, sourceIconScale } from './source-icons.js';
 
@@ -298,6 +299,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill }) {
 // ───────────────────────────────────────────────────────────────
 function DrillDrawer({ drill, daily, onClose }) {
   const open = !!drill;
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -331,12 +333,17 @@ function DrillDrawer({ drill, daily, onClose }) {
 
   return (
     <>
-      <div className={`drawer-backdrop ${open ? 'open' : ''}`} onClick={onClose}/>
-      <div className={`drawer ${open ? 'open' : ''}`} role="dialog">
+      <motion.div className={`drawer-backdrop motion-drawer-backdrop ${open ? 'open' : ''}`}
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        transition={{ duration: reduceMotion ? 0 : 0.18 }} onClick={onClose}/>
+      <motion.div className="drawer motion-drawer" role="dialog" aria-label="用量详情"
+        initial={{ x: reduceMotion ? 0 : '100%', opacity: reduceMotion ? 0 : 1 }}
+        animate={{ x: 0, opacity: 1 }} exit={{ x: reduceMotion ? 0 : '100%', opacity: reduceMotion ? 0 : 1 }}
+        transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}>
         {detail && (
           <>
             <div className="drawer-header" style={{position: 'relative'}}>
-              <button className="drawer-close" onClick={onClose}>
+              <button className="drawer-close" onClick={onClose} aria-label="关闭详情">
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                   <path d="M3 3l7 7M10 3l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
                 </svg>
@@ -412,7 +419,7 @@ function DrillDrawer({ drill, daily, onClose }) {
             </div>
           </>
         )}
-      </div>
+      </motion.div>
     </>
   );
 }

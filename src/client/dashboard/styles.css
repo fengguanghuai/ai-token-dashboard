@@ -590,6 +590,21 @@ button, input, select { font-family: inherit; color: inherit; }
 }
 
 .chip:hover { color: var(--text); }
+.motion-chip-row .chip { position: relative; }
+.motion-chip-row .chip.active { background: transparent; box-shadow: none; }
+.chip-active-surface {
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  background: var(--surface);
+  box-shadow: var(--shadow-chip);
+  pointer-events: none;
+}
+.chip-text { position: relative; z-index: 1; white-space: nowrap; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 .chip.active {
   background: var(--surface);
   color: var(--text);
@@ -1829,6 +1844,7 @@ table.dt tbody tr.selected { background: var(--accent-soft); }
   flex-direction: column;
 }
 .drawer.open { transform: translateX(0); }
+.motion-drawer, .motion-drawer-backdrop { transition: none; }
 
 .drawer-header {
   padding: 18px 22px 14px;
@@ -1949,4 +1965,12 @@ table.dt tbody tr.selected { background: var(--accent-soft); }
   .col-4 { grid-column: span 12; }
   .col-6 { grid-column: span 12; }
   .col-3 { grid-column: span 12; }
+}
+
+@media (max-width: 640px) {
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi { padding: 12px; }
+  .kpi-value { font-size: 20px; white-space: nowrap; }
+  .motion-chip-row { flex-wrap: wrap; }
+  .motion-chip-row .chip { flex-shrink: 0; }
 }

@@ -2,6 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { U } from '../src/client/shared/utils.js';
 
+test('chart tooltip text escapes markup and attribute delimiters without losing labels', () => {
+  assert.equal(U.escapeHtml('<img src=x onerror="alert(1)">\'&'),
+    '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&#39;&amp;');
+  assert.equal(U.escapeHtml('DeepSeek Harness · 中文'), 'DeepSeek Harness · 中文');
+  assert.equal(U.escapeHtml(null), '');
+  assert.equal(U.escapeHtml(123), '123');
+});
+
 const sourceFilters = (extra = {}) => ({
   startDate: '2026-08-10', endDate: '2026-09-08',
   sources: new Set(), devices: new Set(), models: new Set(), ...extra

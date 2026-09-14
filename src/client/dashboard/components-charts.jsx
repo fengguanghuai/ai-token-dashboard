@@ -169,12 +169,12 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
         const date = params[0]?.axisValue || '';
         let total = 0;
         for (const p of params) if (sources.includes(p.seriesName)) total += p.value || 0;
-        let html = `<div style="font-weight:600;margin-bottom:6px;color:${pal.tooltipLabel};font-size:11.5px;letter-spacing:.04em">${date}</div>`;
+        let html = `<div style="font-weight:600;margin-bottom:6px;color:${pal.tooltipLabel};font-size:11.5px;letter-spacing:.04em">${U.escapeHtml(date)}</div>`;
         html += `<div style="font-size:16px;font-weight:600;margin-bottom:8px">${U.compactCN(total)} <span style="font-size:11px;color:${pal.tooltipMuted};font-weight:500"> tokens</span></div>`;
         for (const p of params) {
           html += `<div style="display:flex;align-items:center;gap:8px;margin-top:3px;font-size:12px">
-            <span style="width:8px;height:8px;border-radius:2px;background:${p.color};display:inline-block"></span>
-            <span style="color:${pal.tooltipSeries};flex:1">${p.seriesName}</span>
+            <span style="width:8px;height:8px;border-radius:2px;background:${U.escapeHtml(p.color)};display:inline-block"></span>
+            <span style="color:${pal.tooltipSeries};flex:1">${U.escapeHtml(p.seriesName)}</span>
             <span style="font-weight:600;margin-left:18px;font-variant-numeric:tabular-nums">${U.compactCN(p.value || 0)}</span>
           </div>`;
         }
@@ -280,7 +280,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
       borderWidth: 1,
       textStyle: { color: pal.tooltipText, fontSize: 12 },
       extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
-      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>
+      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${U.escapeHtml(p.name)}</div>
         <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
         <div style="font-size:11px;color:${pal.tooltipMuted}">${U.usageShare(p.value, sum).replace('<', '&lt;')}</div>`
     },

@@ -291,7 +291,14 @@ function sortSources(list) {
     (rank.get(a) ?? SOURCE_ORDER.length) - (rank.get(b) ?? SOURCE_ORDER.length));
 }
 
+// Custom chart tooltips render HTML, unlike React text children.
+function escapeHtml(value) {
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(value ?? '').replace(/[&<>"']/g, char => entities[char]);
+}
+
 export const U = {
+  escapeHtml,
   PALETTE, PALETTE_FALLBACK, getSourceColor, sortSources,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,

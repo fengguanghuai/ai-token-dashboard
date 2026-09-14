@@ -36,7 +36,7 @@ function ToolsSection({ daily, totalTokens }) {
       borderWidth: 1,
       textStyle: { color: pal.tooltipText, fontSize: 12 },
       extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
-      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${p.name}</div>
+      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${U.escapeHtml(p.name)}</div>
         <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
         <div style="font-size:11px;color:oklch(0.55 0.005 80)">${(p.percent || 0).toFixed(1)}%</div>`
     },

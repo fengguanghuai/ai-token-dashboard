@@ -3,6 +3,7 @@
    ============================================================= */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -435,18 +436,22 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       {/* KPI row */}
       <div className="kpi-row">
         <KPI label="总 Token" value={U.compactCN(totals.totalTokens)}
+          numericValue={totals.totalTokens}
           sub="vs 上周期"
           delta={U.deltaPct(totals.totalTokens, compareData.totals?.totalTokens)}
           sparkValues={sparkValues} sparkColor="oklch(0.55 0.16 265)" />
         <KPI label="Output" value={U.compactCN(totals.outputTokens)}
+          numericValue={totals.outputTokens}
           sub="生成"
           delta={U.deltaPct(totals.outputTokens, compareData.totals?.outputTokens)}
           sparkValues={sparkBy('outputTokens')} sparkColor="oklch(0.60 0.15 295)" />
         <KPI label="Cache" value={U.compactCN(totals.cacheTokens)}
+          numericValue={totals.cacheTokens}
           sub={`命中 ${totals.cacheHitRate.toFixed(0)}%`}
           delta={U.deltaPct(totals.cacheTokens, compareData.totals?.cacheTokens)}
           sparkValues={sparkBy('cacheReadTokens')} sparkColor="oklch(0.65 0.11 200)" />
         <KPI label="估算费用" value={U.fmtUS.format(totals.costUSD)}
+          numericValue={totals.costUSD} format={U.fmtUS.format}
           sub="累计"
           delta={U.deltaPct(totals.costUSD, compareData.totals?.costUSD)}
           sparkValues={sparkBy('costUSD')} sparkColor="oklch(0.72 0.14 75)" />
@@ -511,7 +516,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         </div>
       </div>
 
-      <DrillDrawer drill={drill} daily={M.daily} onClose={() => setDrill(null)} />
+      <AnimatePresence>
+        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={M.daily} onClose={() => setDrill(null)} />}
+      </AnimatePresence>
     </div>
   );
 }
