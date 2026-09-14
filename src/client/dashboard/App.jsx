@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { UsageNotes } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -397,6 +396,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   return (
     <div className="app">
       <Topbar
+        rows={filtered} pricing={M.pricing}
         lastSync={lastSync}
         onRefresh={onRefresh}
         refreshing={refreshing}
@@ -441,24 +441,24 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
           sub="vs 上周期"
           delta={U.deltaPct(totals.totalTokens, compareData.totals?.totalTokens)}
           sparkValues={sparkValues} sparkColor="oklch(0.55 0.16 265)" />
-        <KPI label="Output" value={U.compactCN(totals.outputTokens)}
+        <KPI label="输出" value={U.compactCN(totals.outputTokens)}
           numericValue={totals.outputTokens}
           sub="生成"
           delta={U.deltaPct(totals.outputTokens, compareData.totals?.outputTokens)}
           sparkValues={sparkBy('outputTokens')} sparkColor="oklch(0.60 0.15 295)" />
-        <KPI label="Cache" value={U.compactCN(totals.cacheTokens)}
+        <KPI label="缓存" value={U.compactCN(totals.cacheTokens)}
           numericValue={totals.cacheTokens}
           sub={`命中 ${totals.cacheHitRate.toFixed(0)}%`}
           delta={U.deltaPct(totals.cacheTokens, compareData.totals?.cacheTokens)}
           sparkValues={sparkBy('cacheReadTokens')} sparkColor="oklch(0.65 0.11 200)" />
         <KPI label="估算费用" value={U.fmtUS.format(totals.costUSD)}
+          notice={filtered.some(r => r.totalTokens > 0 && M.pricing?.models?.[r.model] === false) ? '部分模型未匹配价格 · 估价可能不完整' : null}
           numericValue={totals.costUSD} format={U.fmtUS.format}
           sub="累计"
           delta={U.deltaPct(totals.costUSD, compareData.totals?.costUSD)}
           sparkValues={sparkBy('costUSD')} sparkColor="oklch(0.72 0.14 75)" />
       </div>
 
-      <UsageNotes rows={filtered} pricing={M.pricing} />
 
       {/* Charts grid */}
       <div className="grid">

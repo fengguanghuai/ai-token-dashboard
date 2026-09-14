@@ -5,6 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import { AnimatedNumber } from './AnimatedNumber.jsx';
+import { UsageNotes, InfoButton } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
 import { ThemeToggle } from '../shared/ThemeToggle.jsx';
 import { quotaWindowLabel, orderQuotaWindows } from '../shared/quota.js';
@@ -151,7 +152,7 @@ function QuotaBars({ quota }) {
 // ───────────────────────────────────────────────────────────────
 // Topbar
 // ───────────────────────────────────────────────────────────────
-function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus }) {
+function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collectStatus, rows, pricing }) {
   return (
     <div className="topbar">
       <div className="topbar-left">
@@ -186,13 +187,14 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
           </svg>
           {collecting ? '采集中' : '采集'}
         </button>
-        <button className={`btn btn-primary ${refreshing ? 'loading' : ''}`} onClick={onRefresh}>
+        <button className={`btn ${refreshing ? 'loading' : ''}`} onClick={onRefresh}>
           <svg className={`icon ${refreshing ? 'spin' : ''}`} viewBox="0 0 16 16" fill="none" style={{opacity:1}}>
             <path d="M3 3v3h3M13 13v-3h-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M13 7A5 5 0 0 0 4 5M3 9a5 5 0 0 0 9 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
           {refreshing ? '同步中' : '刷新'}
         </button>
+        <UsageNotes rows={rows} pricing={pricing}/>
       </div>
     </div>
   );
@@ -290,7 +292,7 @@ function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, 
         </div>
       </div>
 
-      <div className="filter-row">
+      <div className="filter-row filter-row-sources">
         <div className="filter-group filter-group-sources">
           <span className="filter-label" title="当前时间、设备和模型条件下有 Token 的来源；已选无用量项保留以便取消">来源</span>
           <AnimatePresence initial={false}>
@@ -598,8 +600,14 @@ function Delta({ value, suffix = '%', invert = false }) {
 // ───────────────────────────────────────────────────────────────
 // KPI card
 // ───────────────────────────────────────────────────────────────
-function KPI({ label, value, numericValue, format = U.compactCN, sub, delta, dotColor, sparkValues, sparkColor }) {
+function KPI({ label, value, numericValue, format = U.compactCN, sub, delta, dotColor, sparkValues, sparkColor, notice }) {
   const reduceMotion = useReducedMotion();
+  const explanation = {
+    '总 Token': '汇总采集记录中的总量，可能包含缓存和未细分用量。不要把所有展示项再次相加。',
+    '输出': '模型生成的输出用量。部分工具的推理 Token 已包含在输出中，不重复累加。',
+    '缓存': '缓存读取 + 缓存创建。命中率为缓存读取 ÷ 总 Token。',
+    '估算费用': '已有记录的费用汇总，可能来自工具记录或估价，不等同于实际账单或订阅支出。更新价格不会自动重算历史费用。'
+  }[label];
   return (
     <motion.div className="kpi"
       initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
@@ -610,14 +618,16 @@ function KPI({ label, value, numericValue, format = U.compactCN, sub, delta, dot
         <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
           {dotColor && <span className="dot" style={{color: dotColor}}/>}
           {label}
+          {explanation && <InfoButton label={label}>{explanation}</InfoButton>}
         </span>
       </div>
       <div className="kpi-value">{Number.isFinite(numericValue)
         ? <AnimatedNumber value={numericValue} format={format} /> : value}</div>
       <div className="kpi-sub">
-        {delta != null && <Delta value={delta}/>}
+        {delta != null && (label === '估算费用' ? <span className="cost-change">{delta > 0 ? '+' : ''}{delta.toFixed(1)}%</span> : <Delta value={delta}/>)}
         <span>{sub}</span>
       </div>
+      {notice && <div className="price-notice">{notice}</div>}
       {sparkValues && <Spark values={sparkValues} color={sparkColor || 'var(--c-indigo)'}/>}
     </motion.div>
   );

@@ -258,127 +258,30 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
 // Donut chart — source share
 // ───────────────────────────────────────────────────────────────
 function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
-  const pal = chartPalette(useTheme().theme);
-  const data = sources.map(src => {
-    let v = 0;
-    for (const r of rows) if (r.source === src) v += r.totalTokens;
-    return { name: src, value: v, color: U.getSourceColor(src) };
-  }).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
-
-  const sum = data.reduce((s, d) => s + d.value, 0);
-
-  const option = {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      appendToBody: true,
-      confine: true,
-      transitionDuration: 0,
-      backgroundColor: pal.tooltipBg,
-      borderColor: pal.tooltipBorder,
-      borderWidth: 1,
-      textStyle: { color: pal.tooltipText, fontSize: 12 },
-      extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
-      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${U.escapeHtml(p.name)}</div>
-        <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
-        <div style="font-size:11px;color:${pal.tooltipMuted}">${U.usageShare(p.value, sum).replace('<', '&lt;')}</div>`
-    },
-    series: [{
-      type: 'pie',
-      animationDurationUpdate: 220,
-      animationEasingUpdate: 'cubicOut',
-      stateAnimation: {
-        duration: 140,
-        easing: 'cubicOut'
-      },
-      radius: ['48%', '78%'],
-      center: ['50%', '50%'],
-      minAngle: 2,
-      avoidLabelOverlap: true,
-      label: { show: false },
-      labelLine: { show: false },
-      itemStyle: {
-        borderColor: pal.sliceBorder,
-        borderWidth: 2,
-        shadowBlur: 12,
-        shadowOffsetY: 3,
-        shadowColor: 'rgba(15, 23, 42, 0.16)'
-      },
-      emphasis: {
-        scale: true,
-        scaleSize: 3,
-        itemStyle: {
-          shadowBlur: 12,
-          shadowOffsetY: 3,
-          shadowColor: 'rgba(15, 23, 42, 0.16)'
-        }
-      },
-      blur: {
-        itemStyle: { opacity: 1 }
-      },
-      data: data.map(d => {
-        // Rounded caps only on slices big enough to hold them — on tiny
-        // minAngle-forced slices the caps collapse into dots at the seam.
-        const borderRadius = sum && d.value / sum >= 0.03 ? 8 : 0;
-        return {
-          name: d.name,
-          value: d.value,
-          itemStyle: { color: d.color, borderRadius, opacity: focused && focused !== d.name ? 0.25 : 1 },
-          emphasis: {
-            itemStyle: {
-              color: d.color,
-              borderRadius,
-              opacity: 1,
-              borderColor: pal.sliceBorder,
-              borderWidth: 2,
-              shadowBlur: 12,
-              shadowOffsetY: 3,
-              shadowColor: 'rgba(15, 23, 42, 0.16)'
-            }
-          }
-        };
-      })
-    }]
-  };
-
-  return (
-    <div className="panel source-donut-panel">
-      <div className="panel-header source-donut-header">
-        <div>
-          <h2 className="panel-title">来源占比</h2>
-        </div>
-        <p className="panel-sub source-donut-note">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>
-      </div>
-      <div className="donut-stack">
-        <div className="donut-stage">
-          <EChart option={option} height={236}/>
-          <div style={{
-            position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-            pointerEvents: 'none', textAlign: 'center'
-          }}>
-            <div>
-              <div style={{fontSize: 10.5, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase'}}>合计</div>
-              <div style={{fontSize: 22, fontWeight: 600, fontVariantNumeric: 'tabular-nums', marginTop: 2}}>
-                {U.compactCN(sum)}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="legend">
-          {data.map(d => (
-            <div key={d.name}
-              className={`legend-item ${focused && focused !== d.name ? 'dim' : ''}`}
-              onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
-              <span className="legend-swatch" style={{background: d.color}}/>
-              <span className="legend-name" title={d.name}>{d.name}</span>
-              <span className="legend-val">{U.compactCN(d.value)}</span>
-              <span className="legend-pct">{U.usageShare(d.value, sum)}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+  const data = sources.map(name => ({
+    name, value: rows.filter(r => r.source === name).reduce((sum, r) => sum + r.totalTokens, 0),
+    color: U.getSourceColor(name)
+  })).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
+  const sum = data.reduce((value, d) => value + d.value, 0);
+  return <div className="panel source-bars-panel">
+    <div className="panel-header">
+      <h2 className="panel-title">来源占比</h2>
+      <span className="panel-sub">点击来源聚焦</span>
     </div>
-  );
+    <div className="source-bars">
+      {data.map(d => <button key={d.name} className="source-bar-item"
+        aria-pressed={focused === d.name}
+        style={{ opacity: focused && focused !== d.name ? 0.45 : 1 }}
+        onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
+        <span className="source-bar-heading"><span>{d.name}</span><strong>{U.compactCN(d.value)}</strong></span>
+        <span className="source-bar-detail">
+          <progress max={sum || 1} value={d.value} aria-label={d.name + ' 用量占比'} style={{ '--bar-color': d.color }}/>
+          <span>{U.usageShare(d.value, sum)}</span>
+        </span>
+      </button>)}
+      {!data.length && <p className="muted">当前筛选下暂无用量</p>}
+    </div>
+  </div>;
 }
 
 // ───────────────────────────────────────────────────────────────
