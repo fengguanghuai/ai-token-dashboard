@@ -1,0 +1,1 @@
+{"compilerOptions":{"target":"ES2022","lib":["ES2022","DOM"],"jsx":"react-jsx","module":"ESNext","moduleResolution":"Bundler","allowJs":true,"skipLibCheck":true,"noEmit":true,"baseUrl":".","paths":{"@/*":["./src/*"]}},"include":["src"]}

@@ -1,0 +1,37 @@
+{
+  "name": "token-studio-ui-showcase",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@number-flow/react": "0.6.2",
+    "@tremor/react": "3.18.7",
+    "@visx/curve": "^4.0.1-alpha.0",
+    "@visx/event": "^4.0.1-alpha.0",
+    "@visx/grid": "^4.0.1-alpha.0",
+    "@visx/group": "^4.0.1-alpha.0",
+    "@visx/responsive": "^4.0.1-alpha.0",
+    "@visx/scale": "^4.0.1-alpha.0",
+    "@visx/shape": "^4.0.1-alpha.0",
+    "clsx": "^2.1.1",
+    "cn": "^0.3.0",
+    "d3-array": "^3.2.4",
+    "d3-shape": "^3.2.0",
+    "lucide-react": "^0.468.0",
+    "motion": "13.2.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "^3.8.0",
+    "tailwind-merge": "^2.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^3.4.17",
+    "vite": "7.3.6"
+  }
+}

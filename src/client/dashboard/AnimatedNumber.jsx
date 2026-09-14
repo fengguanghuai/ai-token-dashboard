@@ -1,23 +1,15 @@
-import { useEffect } from 'react';
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from 'motion/react';
+import NumberFlow from '@number-flow/react';
+import { useReducedMotion } from 'motion/react';
+import { numberFlowParts } from '../shared/number-flow.js';
 
 // Animate display only. Calculations, exports and accessible text use the final value.
 export function AnimatedNumber({ value, format }) {
   const reduceMotion = useReducedMotion();
-  const current = useMotionValue(value);
-  const text = useTransform(current, latest => format(latest));
-
-  useEffect(() => {
-    if (reduceMotion) {
-      current.set(value);
-      return;
-    }
-    const playback = animate(current, value, { duration: 0.55, ease: [0.22, 1, 0.36, 1] });
-    return () => playback.stop();
-  }, [current, value, reduceMotion]);
+  const text = format(value);
+  const parts = numberFlowParts(text);
 
   return <span>
-    <span className="visually-hidden">{format(value)}</span>
-    <motion.span aria-hidden="true">{text}</motion.span>
+    <span className="visually-hidden">{text}</span>
+    <span aria-hidden="true">{parts ? <NumberFlow {...parts} locales="en-US" animated={!reduceMotion} transformTiming={{duration:550}} /> : text}</span>
   </span>;
 }

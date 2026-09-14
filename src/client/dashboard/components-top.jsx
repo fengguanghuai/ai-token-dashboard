@@ -203,8 +203,25 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, quota }) {
+function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, onExportTrend, quota }) {
   const reduceMotion = useReducedMotion();
+  const exportRef = useRef(null);
+  useEffect(() => {
+    const dismiss = event => {
+      const menu = exportRef.current;
+      if (!menu?.open) return;
+      if (event.type === 'keydown' && event.key === 'Escape') {
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      } else if (event.type === 'pointerdown' && !menu.contains(event.target)) menu.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('keydown', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('keydown', dismiss);
+    };
+  }, []);
   const RANGES = [
     { id: 'today', label: '今天', days: 1  },
     { id: '7d',  label: '7 天',  days: 7  },
@@ -337,7 +354,7 @@ function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, 
         </div>
 
         <div className="filter-spacer"/>
-
+        <div className="filter-actions">
         {filtersActive > 0 && (
           <button className="btn" onClick={clearAll}>
             <svg className="icon" viewBox="0 0 16 16" fill="none">
@@ -350,12 +367,14 @@ function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, 
           <span className="toggle-slot"/>
           对比上一周期
         </button>
-        <button className="btn" onClick={onExport}>
-          <svg className="icon" viewBox="0 0 16 16" fill="none">
-            <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          导出
-        </button>
+        <details className="export-menu" ref={exportRef}>
+          <summary className="btn">导出 CSV ▾</summary>
+          <div className="export-options">
+            <button className="btn" onClick={event => { onExport(); event.currentTarget.closest('details').open = false; }}>用量明细</button>
+            <button className="btn" onClick={event => { onExportTrend(); event.currentTarget.closest('details').open = false; }}>每日趋势</button>
+          </div>
+        </details>
+        </div>
       </div>
       </div>
       <QuotaBars quota={quota} />
@@ -612,8 +631,7 @@ function KPI({ label, value, numericValue, format = U.compactCN, sub, delta, dot
     <motion.div className="kpi"
       initial={{ opacity: 0, y: reduceMotion ? 0 : 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduceMotion ? 0 : 0.35 }}
-      whileHover={reduceMotion ? undefined : { y: -2 }}>
+      transition={{ duration: reduceMotion ? 0 : 0.35 }}>
       <div className="kpi-label">
         <span style={{display:'inline-flex', alignItems:'center', gap:6}}>
           {dotColor && <span className="dot" style={{color: dotColor}}/>}

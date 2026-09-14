@@ -324,22 +324,39 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
 // ───────────────────────────────────────────────────────────────
 // Drawer — drill-down panel
 // ───────────────────────────────────────────────────────────────
-function DrillDrawer({ drill, daily, onClose }) {
+function DrillDrawer({ drill, daily, rangeLabel, onClose }) {
   const open = !!drill;
   const reduceMotion = useReducedMotion();
+  const drawerRef = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const previous = document.activeElement;
+    const drawer = drawerRef.current;
+    drawer?.querySelector('button')?.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); }
+      if (e.key !== 'Tab' || !drawer) return;
+      const items = [...drawer.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex="0"]')].filter(el => el.getClientRects().length);
+      const first = items[0], last = items[items.length - 1];
+      if (!first) { e.preventDefault(); drawer.focus(); }
+      else if (e.shiftKey && (document.activeElement === first || !drawer.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !drawer.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
 
   const detail = useMemo(() => {
     if (!drill) return null;
     const { kind, row } = drill;
     let title = '', sub = '', filterFn = () => true;
     if (kind === 'source') { title = row.source; sub = row.device; filterFn = r => r.source === row.source && r.device === row.device; }
-    if (kind === 'model')  { title = row.model;  sub = row.source; filterFn = r => r.source === row.source && r.model === row.model; }
+    if (kind === 'model')  { title = row.model; sub = drill.allSources ? '当前筛选内的所有来源' : row.source; filterFn = r => (drill.allSources || r.source === row.source) && r.model === row.model; }
     if (kind === 'session'){ title = row.projectPath || row.sessionId; sub = `${row.source} · ${row.device}`;
       filterFn = r => r.source === row.source; /* session doesn't tie to daily directly — show source's daily */ }
     if (kind === 'run')    { title = `采集: ${row.source}`; sub = U.formatTs(row.collectedAt); filterFn = () => false; }
@@ -363,7 +380,7 @@ function DrillDrawer({ drill, daily, onClose }) {
       <motion.div className={`drawer-backdrop motion-drawer-backdrop ${open ? 'open' : ''}`}
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         transition={{ duration: reduceMotion ? 0 : 0.18 }} onClick={onClose}/>
-      <motion.div className="drawer motion-drawer" role="dialog" aria-label="用量详情"
+      <motion.div ref={drawerRef} tabIndex={-1} className="drawer motion-drawer" role="dialog" aria-modal="true" aria-label="用量详情"
         initial={{ x: reduceMotion ? 0 : '100%', opacity: reduceMotion ? 0 : 1 }}
         animate={{ x: 0, opacity: 1 }} exit={{ x: reduceMotion ? 0 : '100%', opacity: reduceMotion ? 0 : 1 }}
         transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 1, 0.36, 1] }}>
@@ -383,6 +400,7 @@ function DrillDrawer({ drill, daily, onClose }) {
               </div>
               <h3>{detail.title}</h3>
               <div className="sub">{detail.sub}</div>
+              {detail.kind !== 'run' && <div className="sub">{rangeLabel} · 当前筛选范围</div>}
             </div>
             <div className="drawer-body">
               {detail.kind !== 'run' ? (
