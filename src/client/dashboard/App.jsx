@@ -4,7 +4,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
-import { UsageNotes } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -233,7 +232,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
     compare: true
   }));
 
-  const [trendMode, setTrendMode] = useState('stacked');
+  const [trendMode, setTrendMode] = useState('line');
   const [drill, setDrill] = useState(null);
   const [focusedSource, setFocusedSource] = useState(null);
 
@@ -262,6 +261,8 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   }, [M.daily, M.time]);
 
   // ───── Filtered data ─────
+  const sourceContextRows = useMemo(() => filters.precise && M.time.length
+    ? U.filterTime(M.time, filters) : U.filterDaily(M.daily, filters), [filters, M.time, M.daily]);
   const filtered = useMemo(() => {
     const effective = { ...filters };
     if (focusedSource) effective.sources = new Set([focusedSource]);
@@ -397,6 +398,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   return (
     <div className="app">
       <Topbar
+        rows={filtered} pricing={M.pricing}
         lastSync={lastSync}
         onRefresh={onRefresh}
         refreshing={refreshing}
@@ -413,6 +415,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         allModels={allModels}
         availableRange={availableRange}
         onExport={onExportAll}
+        onExportTrend={onExportTrend}
         quota={quota} />
 
       {focusedSource && (
@@ -441,24 +444,24 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
           sub="vs 上周期"
           delta={U.deltaPct(totals.totalTokens, compareData.totals?.totalTokens)}
           sparkValues={sparkValues} sparkColor="oklch(0.55 0.16 265)" />
-        <KPI label="Output" value={U.compactCN(totals.outputTokens)}
+        <KPI label="输出" value={U.compactCN(totals.outputTokens)}
           numericValue={totals.outputTokens}
           sub="生成"
           delta={U.deltaPct(totals.outputTokens, compareData.totals?.outputTokens)}
           sparkValues={sparkBy('outputTokens')} sparkColor="oklch(0.60 0.15 295)" />
-        <KPI label="Cache" value={U.compactCN(totals.cacheTokens)}
+        <KPI label="缓存" value={U.compactCN(totals.cacheTokens)}
           numericValue={totals.cacheTokens}
-          sub={`命中 ${totals.cacheHitRate.toFixed(0)}%`}
+          sub={totals.totalTokens > 0 ? `命中 ${totals.cacheHitRate.toFixed(0)}%` : '暂无用量'}
           delta={U.deltaPct(totals.cacheTokens, compareData.totals?.cacheTokens)}
           sparkValues={sparkBy('cacheReadTokens')} sparkColor="oklch(0.65 0.11 200)" />
         <KPI label="估算费用" value={U.fmtUS.format(totals.costUSD)}
+          notice={filtered.some(r => r.totalTokens > 0 && M.pricing?.models?.[r.model] === false) ? '部分模型未匹配价格 · 估价可能不完整' : null}
           numericValue={totals.costUSD} format={U.fmtUS.format}
           sub="累计"
           delta={U.deltaPct(totals.costUSD, compareData.totals?.costUSD)}
           sparkValues={sparkBy('costUSD')} sparkColor="oklch(0.72 0.14 75)" />
       </div>
 
-      <UsageNotes rows={filtered} pricing={M.pricing} />
 
       {/* Charts grid */}
       <div className="grid">
@@ -472,19 +475,19 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
             mode={trendMode}
             onModeChange={setTrendMode}
             totals={totals}
-            onExport={onExportTrend} />
+            />
         </div>
         <div className="col-4">
           <SourceDonut
-            rows={filtered}
-            sources={Array.from(new Set(filtered.map(r => r.source)))}
+            rows={sourceContextRows}
+            sources={Array.from(new Set(sourceContextRows.map(r => r.source)))}
             total={totals.totalTokens}
             focused={focusedSource}
             onFocusSource={setFocusedSource} />
         </div>
 
         <div className="col-6">
-          <TopModels rows={filtered} onDrillModel={r => setDrill({ kind: 'model', row: r })} />
+          <TopModels rows={filtered} onDrillModel={r => setDrill({ kind: 'model', row: r, allSources: true })} />
         </div>
         <div className="col-3">
           <Gauge
@@ -521,7 +524,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       </div>
 
       <AnimatePresence>
-        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={M.daily} onClose={() => setDrill(null)} />}
+        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={filtered} rangeLabel={filters.precise ? `${filters.startDateTime} ~ ${filters.endDateTime}` : `${filters.startDate} ~ ${filters.endDate}`} onClose={() => setDrill(null)} />}
       </AnimatePresence>
     </div>
   );

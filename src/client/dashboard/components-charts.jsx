@@ -2,13 +2,15 @@
    Charts — Trend, Donut, TopModels, Heatmap, Gauge, Stat
    ============================================================= */
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Component, Fragment, Suspense, lazy, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { U } from '../shared/utils.js';
 import { EChart } from '../shared/echart.jsx';
 import { Delta, Spark } from './components-top.jsx';
 import { sourceIcon, sourceIconScale } from './source-icons.js';
 import { chartPalette, useTheme } from '../shared/theme.js';
 import { GAUGE, GAUGE_PATH, gaugeDash } from '../shared/gauge.js';
+import { motion, useReducedMotion } from 'motion/react';
+import { AnimatedNumber } from './AnimatedNumber.jsx';
 
 // ───────────────────────────────────────────────────────────────
 // Trend chart — switchable bar/line/stacked + optional comparison
@@ -18,6 +20,13 @@ const TREND_MODES = [
   { id: 'line',    label: '折线' },
   { id: 'bar',     label: '柱状' }
 ];
+
+const BklitTrend = lazy(() => import('./BklitTrend.jsx'));
+class TrendBoundary extends Component {
+  state = { failed:false };
+  static getDerivedStateFromError() { return {failed:true}; }
+  render() { return this.state.failed ? <><p className="panel-sub">增强折线暂不可用，已显示兼容图表。</p>{this.props.fallback}</> : this.props.children; }
+}
 
 function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onModeChange, totals, prevTotals, onExport, density }) {
   // ECharts paints to canvas, so chart chrome takes its colours from the
@@ -224,7 +233,7 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
   };
 
   return (
-    <div className="panel">
+    <div className="panel trend-panel">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">每日 Token 使用趋势</h2>
@@ -242,14 +251,12 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
               </button>
             ))}
           </div>
-          <button className="btn btn-icon" onClick={onExport} title="导出 CSV">
-            <svg className="icon" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
         </div>
       </div>
-      <EChart option={option} height={320}/>
+      {mode==='line'&&dates.length>1&&dates.length<=400&&sources.length>0 ?
+        <TrendBoundary key={dates.join('|')} fallback={<EChart option={option} height={320}/>}>
+          <Suspense fallback={<EChart option={option} height={320}/>}><BklitTrend rows={rows} dates={dates} sources={sources} compareRows={compareRows} compareDates={compareDates}/></Suspense>
+        </TrendBoundary> : <EChart option={option} height={320}/>}
     </div>
   );
 }
@@ -266,6 +273,10 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
   }).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
 
   const sum = data.reduce((s, d) => s + d.value, 0);
+  if (!sum) return <div className="panel source-donut-panel">
+    <div className="panel-header"><h2 className="panel-title">来源占比</h2>{focused && <button className="btn" onClick={() => onFocusSource(null)}>取消聚焦</button>}</div>
+    <div className="empty">当前筛选下暂无来源用量</div>
+  </div>;
 
   const option = {
     backgroundColor: 'transparent',
@@ -347,7 +358,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
         <div>
           <h2 className="panel-title">来源占比</h2>
         </div>
-        <p className="panel-sub source-donut-note">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>
+        {focused ? <button className="btn" onClick={() => onFocusSource(null)}>取消聚焦</button> : <p className="panel-sub source-donut-note">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>}
       </div>
       <div className="donut-stack">
         <div className="donut-stage">
@@ -366,14 +377,14 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
         </div>
         <div className="legend">
           {data.map(d => (
-            <div key={d.name}
-              className={`legend-item ${focused && focused !== d.name ? 'dim' : ''}`}
+            <button type="button" key={d.name} aria-pressed={focused === d.name}
+              className={`legend-item ${focused === d.name ? 'selected' : ''} ${focused && focused !== d.name ? 'dim' : ''}`}
               onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
               <span className="legend-swatch" style={{background: d.color}}/>
               <span className="legend-name" title={d.name}>{d.name}</span>
               <span className="legend-val">{U.compactCN(d.value)}</span>
               <span className="legend-pct">{U.usageShare(d.value, sum)}</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -385,6 +396,7 @@ function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
 // Top Models bar chart (HTML)
 // ───────────────────────────────────────────────────────────────
 function TopModels({ rows, onDrillModel }) {
+  const reduceMotion = useReducedMotion();
   const byModel = new Map();
   for (const r of rows) {
     if (!r.model) continue;
@@ -399,20 +411,26 @@ function TopModels({ rows, onDrillModel }) {
   const max = list[0]?.total || 1;
 
   return (
-    <div className="panel">
+    <div className="panel model-ranking">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">Top 模型</h2>
-          <p className="panel-sub">按总 Token 排序 · {list.length} 个</p>
+          <p className="panel-sub">按总 Token 排序 · {list.length} 个{onDrillModel && list.length > 0 ? ' · 点击查看明细' : ''}</p>
         </div>
         <span style={{fontSize: 11, color: 'var(--muted)'}}>Tokens · 费用</span>
       </div>
       <div className="bars">
         {list.length === 0 && <div className="empty">当前筛选下无数据</div>}
-        {list.map(m => {
+        {list.map((m, index) => {
           const icon = sourceIcon(m.source);
           return (
-          <div key={m.model} className="bar-row" onClick={() => onDrillModel?.(m)}>
+          <motion.button key={m.model} type="button" className="bar-row"
+            layout={reduceMotion ? false : 'position'}
+            transition={{duration: reduceMotion ? 0 : 0.35}}
+            disabled={!onDrillModel}
+            aria-label={`查看 ${m.model} 的用量与费用明细`}
+            onClick={() => onDrillModel?.(m)}>
+            <span className="bar-rank" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
             <div className="bar-label">
               <div className="bar-head" title={m.source}>
                 {icon
@@ -431,10 +449,11 @@ function TopModels({ rows, onDrillModel }) {
               </div>
             </div>
             <div className="bar-value">
-              {U.compactCN(m.total)}
-              <small>{m.cost > 0 ? U.fmtUS.format(m.cost) : '—'}</small>
+              <AnimatedNumber value={m.total} format={U.compactCN}/>
+              <small>{m.cost > 0 ? <AnimatedNumber value={m.cost} format={U.fmtUS.format}/> : '—'}</small>
             </div>
-          </div>
+            <span className="bar-open" aria-hidden="true">›</span>
+          </motion.button>
           );
         })}
       </div>
@@ -759,6 +778,11 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
 // Gauge / arc — cache hit rate
 // ───────────────────────────────────────────────────────────────
 function Gauge({ rate, cacheRead, cacheCreation, total, prevRate, savedUSD, hitRateSeries }) {
+  const reduceMotion = useReducedMotion();
+  if (!(total > 0)) return <div className="panel cache-card">
+    <div className="panel-header"><h2 className="panel-title">缓存命中率</h2></div>
+    <div className="empty">当前筛选下暂无用量，无法计算缓存命中率</div>
+  </div>;
   const r = Math.max(0, Math.min(100, rate));
   // The sparkline below scales to its own range, so name that range rather than
   // letting a non-zero floor imply the line starts at 0.
@@ -771,20 +795,20 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate, savedUSD, hitR
       <div className="panel-header">
         <div>
           <h2 className="panel-title">缓存命中率</h2>
-          <p className="panel-sub">cache_read / total</p>
+          <p className="panel-sub">缓存读取占总 Token 的比例</p>
         </div>
         <Delta value={U.deltaPct(rate, prevRate)} />
       </div>
       <div className="gauge">
         <div className="gauge-wrap">
-          <svg viewBox={GAUGE.viewBox} width="180" height="100">
+          <svg viewBox={GAUGE.viewBox} width="180" height="100" aria-hidden="true">
             <path d={GAUGE_PATH} stroke="var(--gauge-track)" strokeWidth="14" fill="none" strokeLinecap="round"/>
             <path
               d={GAUGE_PATH}
               stroke="url(#hitGrad)"
               strokeWidth="14" fill="none" strokeLinecap="round"
               strokeDasharray={gaugeDash(r)}
-              style={{transition: 'stroke-dasharray 600ms cubic-bezier(0.22,1,0.36,1)'}}
+              style={{transition: reduceMotion ? 'none' : 'stroke-dasharray 600ms cubic-bezier(0.22,1,0.36,1)'}}
             />
             <defs>
               <linearGradient id="hitGrad" x1="0" y1="0" x2="1" y2="0">
@@ -795,7 +819,7 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate, savedUSD, hitR
           </svg>
           <div className="gauge-text">
             <div>
-              <span className="gauge-num">{r.toFixed(1)}</span>
+              <span className="gauge-num"><AnimatedNumber value={r} format={value => value.toFixed(1)}/></span>
               <span className="gauge-suffix">%</span>
             </div>
           </div>
@@ -803,13 +827,13 @@ function Gauge({ rate, cacheRead, cacheCreation, total, prevRate, savedUSD, hitR
       </div>
 
       <div className="cache-line">
-        <span><i className="cache-key cache-key-read"/>读取 <b>{U.compactCN(cacheRead)}</b></span>
-        <span><i className="cache-key cache-key-create"/>创建 <b>{U.compactCN(cacheCreation)}</b></span>
+        <div><span><i className="cache-key cache-key-read"/>缓存读取</span><b><AnimatedNumber value={cacheRead} format={U.compactCN}/></b></div>
+        <div><span><i className="cache-key cache-key-create"/>缓存创建</span><b><AnimatedNumber value={cacheCreation} format={U.compactCN}/></b></div>
       </div>
 
       <div className="cache-saved">
-        <div className="cache-saved-label">缓存节省费用</div>
-        <div className="cache-saved-num">≈ {U.fmtUS.format(savedUSD || 0)}</div>
+        <div className="cache-saved-label">预估缓存节省</div>
+        <div className="cache-saved-num">≈ <AnimatedNumber value={savedUSD || 0} format={U.fmtUS.format}/></div>
         <div className="cache-saved-sub">若无缓存需多付的估算金额</div>
       </div>
 
