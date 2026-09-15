@@ -20,18 +20,42 @@ function ValueAxis() {
   </div>, containerRef.current);
 }
 
-export default function BklitTrend({rows,dates,sources,compareRows,compareDates}) {
+function SeriesBars({points, sources, colors, stacked}) {
+  const {xScale, yScale, innerWidth} = useChartStable();
+  const slot = points.length > 1 ? Math.abs(xScale(points[1].date)-xScale(points[0].date)) : innerWidth;
+  const width = Math.min(32, slot * 0.72);
+  return <g className="trend-bars">{points.map(point => {
+    let base = 0;
+    return sources.map((source,i) => {
+      const value = point[`source${i}`];
+      const bottom = stacked ? base : 0;
+      base += value;
+      const barWidth = stacked ? width : width / sources.length;
+      const x = xScale(point.date)-width/2+(stacked?0:i*barWidth);
+      return <rect key={`${point.day}-${source}`} x={x} width={Math.max(0.1,barWidth-(stacked?0:0.5))}
+        y={yScale(bottom+value)} height={Math.max(0,yScale(bottom)-yScale(bottom+value))}
+        rx={stacked?0:Math.min(3,barWidth/3)} fill={colors[i]} opacity={0.88}/>;
+    });
+  })}</g>;
+}
+
+export default function BklitTrend({rows,dates,sources,compareRows,compareDates,mode='line'}) {
   const reduceMotion = useReducedMotion();
   const data = useMemo(() => buildTrendData(rows,dates,sources,compareRows,compareDates),[rows,dates,sources,compareRows,compareDates]);
   const [start,setStart] = useState(0);
   const [end,setEnd] = useState(dates.length-1);
   const visible = data.slice(start,end+1);
   const colors = sources.map(U.getSourceColor);
+  const barDomain = mode !== 'line' || visible.length === 1
+    ? [new Date(+visible[0].date-43200000),new Date(+visible[visible.length-1].date+43200000)] : undefined;
   return <div className="bklit-trend">
-    <div className="bklit-canvas" role="img" aria-label={`每日用量折线图，${dates[start]} 至 ${dates[end]}。精确数据可通过图表明细查看或导出。`}>
-      <LineChart data={visible} style={{height:'100%'}} margin={{left:48,right:18,top:20,bottom:38}} animationDuration={reduceMotion?0:550} yDomainTween={!reduceMotion}>
+    <div className="bklit-canvas" role="img" aria-label={`每日用量${mode==='line'?'折线':mode==='stacked'?'堆叠':'柱状'}图，${dates[start]} 至 ${dates[end]}。精确数据可通过图表明细查看或导出。`}>
+      <LineChart data={visible} xDomain={barDomain} style={{height:'100%'}} margin={{left:48,right:18,top:20,bottom:38}} animationDuration={reduceMotion?0:550} yDomainTween={!reduceMotion}>
         <Grid horizontal numTicksRows={4}/>
-        {sources.map((name,i)=><Line key={name} dataKey={`source${i}`} curve={curveMonotoneX} stroke={colors[i]} strokeWidth={2.2} fadeEdges={false} animate={!reduceMotion} showMarkers={visible.length<=2}/>)}
+        {mode==='line' ? sources.map((name,i)=><Line key={name} dataKey={`source${i}`} curve={curveMonotoneX} stroke={colors[i]} strokeWidth={2.2} fadeEdges={false} animate={!reduceMotion} showMarkers={visible.length<=2}/>) : <>
+          <Line dataKey="total" stroke="transparent" strokeWidth={0} showMarkers={false} animate={false}/>
+          <SeriesBars points={visible} sources={sources} colors={colors} stacked={mode==='stacked'}/>
+        </>}
         {compareRows&&<Line dataKey="previous" curve={curveMonotoneX} stroke="var(--muted)" strokeWidth={1.4} dashFromIndex={0} dashArray="5,5" fadeEdges={false} animate={!reduceMotion}/>}
         <ValueAxis/>
         <XAxis numTicks={5}/>
