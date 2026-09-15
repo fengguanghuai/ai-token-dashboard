@@ -25,6 +25,7 @@ function SourceTag({ source }) {
 function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, selectedKey, getKey, height, emptyText }) {
   const [sortBy, setSortBy] = useState(initialSort || { field: null, dir: 'desc' });
   const [page, setPage] = useState(1);
+  const [activeKey, setActiveKey] = useState(null);
   const wrapRef = useRef(null);
   useEffect(() => setPage(1), [rows, search]);
 
@@ -75,19 +76,22 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
           <tr>
             {columns.map(c => (
               <th key={c.field || c.title}
-                onClick={() => c.sortable !== false && toggleSort(c.field)}
+                scope="col"
+                aria-sort={c.sortable === false ? undefined : sortBy.field === c.field ? (sortBy.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
                 className={sortBy.field === c.field ? 'sorted' : ''}
                 style={{
                   width: c.width,
                   textAlign: c.hozAlign === 'right' ? 'right' : 'left',
                   cursor: c.sortable === false ? 'default' : 'pointer'
                 }}>
+                <button className="table-sort" disabled={c.sortable === false} onClick={() => toggleSort(c.field)}>
                 {c.title}
                 {c.sortable !== false && (
                   <span className="sort-ind">
                     {sortBy.field === c.field ? (sortBy.dir === 'asc' ? '▲' : '▼') : '▾'}
                   </span>
                 )}
+                </button>
               </th>
             ))}
           </tr>
@@ -100,8 +104,14 @@ function DataTable({ rows, columns, initialSort, search, onSearch, onRowClick, s
             const k = getKey ? getKey(r) : i;
             return (
               <tr key={k}
-                className={selectedKey === k ? 'selected' : ''}
-                onClick={() => onRowClick?.(r)}>
+                className={(selectedKey ?? activeKey) === k ? 'selected' : ''}
+                tabIndex={onRowClick ? 0 : undefined}
+                onKeyDown={event => {
+                  if (onRowClick && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault(); setActiveKey(k); onRowClick(r);
+                  }
+                }}
+                onClick={() => { setActiveKey(k); onRowClick?.(r); }}>
                 {columns.map(c => (
                   <td key={c.field || c.title}
                     style={{textAlign: c.hozAlign === 'right' ? 'right' : 'left'}}>
@@ -283,21 +293,22 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
 
   return (
     <div className={`panel table-panel ${tab === 'runs' ? 'table-panel-runs' : ''}`}>
+      <div className="table-heading"><div><h2 className="panel-title">用量明细</h2><p className="panel-sub">按来源、模型或会话核对记录</p></div><span>点击行查看详情</span></div>
       <div className="panel-header" style={{marginBottom: 14}}>
         <div className="panel-tabs">
           {TABS.map(t => (
-            <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => { setTab(t.id); setSearch(''); }}>
+            <button key={t.id} aria-pressed={tab === t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => { setTab(t.id); setSearch(''); }}>
               {t.label} <span style={{opacity:0.55, marginLeft:4}}>{t.count}</span>
             </button>
           ))}
         </div>
         <div className="panel-actions">
-          <input className="search-input" placeholder="搜索..." value={search} onChange={e => setSearch(e.target.value)}/>
+          <div className="table-search"><input type="search" aria-label="搜索当前明细列表" className="search-input" placeholder="搜索当前列表…" value={search} onChange={e => setSearch(e.target.value)}/>{search&&<button type="button" onClick={()=>setSearch('')} aria-label="清空搜索">×</button>}</div>
           <button className="btn" onClick={exportCSV} title="导出当前列表全部记录，不受分页和搜索影响">
             <svg className="icon" viewBox="0 0 16 16" fill="none">
               <path d="M8 2v8M5 7l3 3 3-3M3 13h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            CSV
+            导出列表
           </button>
         </div>
       </div>

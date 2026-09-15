@@ -947,6 +947,25 @@ button, input, select { font-family: inherit; color: inherit; }
 .toggle.on .toggle-slot::after { transform: translateX(10px); }
 
 .filter-spacer { flex: 1; }
+.source-ring-stage { position: relative; width: min(240px, 100%); margin: 0 auto 8px; }
+.source-ring-svg { display: block; width: 100%; overflow: visible; }
+.source-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; gap: 6px; }
+.source-ring-center > span { font-size: 10px; color: var(--muted); max-width: 96px; text-align: center; overflow-wrap: anywhere; }
+.source-ring-center strong { font-size: 22px; font-weight: 650; letter-spacing: -0.04em; }
+.source-ring-center small { font-size: 10px; color: var(--muted); letter-spacing: 0.06em; }
+.source-ring-list { display: flex; flex-direction: column; gap: 4px; }
+.source-ring-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 5px 12px; width: 100%; padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
+.source-ring-row:hover, .source-ring-row:focus-visible { background: var(--surface-2); }
+.source-ring-row.selected { background: var(--surface-2); border-color: var(--c-indigo); }
+.source-ring-row:focus-visible { outline: 2px solid var(--c-indigo); outline-offset: 1px; }
+.source-ring-label { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; }
+.source-ring-label img, .source-ring-label > i { width: 14px; height: 14px; object-fit: contain; flex-shrink: 0; }
+.source-ring-row b { font-size: 12px; font-variant-numeric: tabular-nums; }
+.source-ring-track { display: block; height: 3px; border-radius: 3px; overflow: hidden; background: var(--surface-2); }
+.source-ring-track > i { display: block; height: 100%; min-width: 1px; border-radius: inherit; }
+.source-ring-value { font-size: 11px; color: var(--muted); text-align: right; }
+.source-ring-hint { margin-top: 10px; font-size: 10px; text-align: center; color: var(--muted); }
+.source-ring-center number-flow-react { display: inline-block; }
 .filter-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .export-menu { position: relative; }
 .export-menu summary { list-style: none; cursor: pointer; }
@@ -1442,6 +1461,31 @@ button, input, select { font-family: inherit; color: inherit; }
 .cache-key-create { background: var(--c-violet); }
 
 /* ─── Heatmap ────────────────────────────────────────────── */
+.heatmap-panel { --heat-0: var(--surface-2); --heat-1: color-mix(in oklab, var(--c-violet) 22%, var(--surface)); --heat-2: color-mix(in oklab, var(--c-violet) 46%, var(--surface)); --heat-3: color-mix(in oklab, var(--c-violet) 74%, var(--surface)); --heat-4: var(--c-violet); }
+.heatmap-panel .heatmap-layout { grid-template-columns: minmax(0, 1fr) 290px; gap: 24px; }
+.heatmap-panel > .panel-header { flex-wrap: wrap; }
+.heatmap-panel .heat-scale { flex-shrink: 0; white-space: nowrap; }
+.heatmap-panel .heat-row-label { position: sticky; left: 0; z-index: 3; background: var(--surface); height: 100%; display: flex; align-items: center; justify-content: flex-end; }
+.heatmap-panel .heatmap-main { display: flex; flex-direction: column; align-items: stretch; }
+.heatmap-window { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 14px; font-size: 11px; color: var(--muted); }
+.heatmap-panel .heatmap-scroll { margin-top: 0; padding: 8px 4px 12px; }
+.heatmap-panel .heatmap-grid { min-width: 552px; gap: 4px; }
+.heatmap-panel .heat-cell { border-color: transparent; border-radius: 4px; transition: border-color 100ms ease; }
+.heatmap-panel .heat-cell:hover, .heatmap-panel .heat-cell:focus-visible { transform: none; border-color: var(--text); box-shadow: 0 0 0 1px var(--surface); }
+.heatmap-help { font-size: 10px; color: var(--muted); margin: 10px 0 0; }
+.heatmap-panel .heat-insights { padding: 16px; background: transparent; border-radius: 12px; }
+.heatmap-panel .heat-stat { border: 0; min-height: 78px; padding: 12px; background: var(--surface-2); border-radius: 10px; }
+.heatmap-panel .heat-stat > strong { font-size: 23px; margin-top: 8px; }
+.heatmap-panel .heat-stat:last-child { background: color-mix(in oklab, var(--c-violet) 9%, var(--surface)); }
+.heatmap-panel .heat-weekdays { grid-template-columns: repeat(7, minmax(0,1fr)); gap: 6px; }
+.heatmap-panel .heat-weekday { display: flex; flex-direction: column; gap: 7px; }
+.heatmap-panel .heat-weekday-track { height: 54px; width: 100%; max-width: 20px; display: flex; align-items: flex-end; border-radius: 4px; background: var(--surface-2); }
+.heatmap-panel .heat-weekday-track > div { width: 100%; background: var(--c-violet); border-radius: 4px; }
+.heatmap-panel .heat-hour-bar > div { background: color-mix(in oklab, var(--c-violet) 65%, var(--surface)); border-radius: 4px 4px 0 0; }
+.heatmap-panel .heat-tooltip { background: var(--surface); color: var(--text); border-color: var(--border); border-radius: 10px; padding: 12px 14px; }
+.heatmap-panel .heat-tooltip small { color: var(--muted); }
+.heatmap-panel .heat-tooltip::after { border-color: var(--border); }
+@media (max-width: 1000px) { .heatmap-panel .heatmap-layout { grid-template-columns: minmax(0,1fr); } }
 
 .heatmap-layout {
   display: grid;
@@ -1744,6 +1788,30 @@ button, input, select { font-family: inherit; color: inherit; }
 }
 
 .table-panel { min-width: 0; }
+.table-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.table-heading > span { font-size: 11px; color: var(--muted); }
+.table-panel .panel-tabs { background: transparent; padding: 0; border: 0; gap: 6px; }
+.table-panel .panel-tabs .tab { min-height: 34px; border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; }
+.table-panel .panel-tabs .tab.active { background: color-mix(in oklab, var(--c-violet) 10%, var(--surface)); color: var(--c-violet); border-color: color-mix(in oklab, var(--c-violet) 25%, var(--surface)); box-shadow: none; }
+.table-search { position: relative; min-width: 0; }
+.table-search .search-input { height: 34px; padding-right: 30px; background: var(--surface-2); border-radius: 8px; }
+.table-search input::-webkit-search-cancel-button { display: none; }
+.table-search > button { position: absolute; right: 4px; top: 3px; width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 18px; }
+.table-sort { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.table-sort:disabled { cursor: default; }
+.table-sort:focus-visible, .table-search button:focus-visible { outline: 2px solid var(--c-violet); outline-offset: 4px; }
+.table-panel table.dt thead th { position: sticky; top: 0; z-index: 1; height: 42px; }
+.table-panel table.dt tbody td { padding: 14px 12px; }
+.table-panel table.dt tbody tr.selected, .table-panel table.dt tbody tr:focus-visible { background: color-mix(in oklab, var(--c-violet) 8%, var(--surface)); outline: 2px solid var(--c-violet); outline-offset: -2px; }
+.table-panel .tag { border-radius: 6px; padding: 4px 6px; line-height: 1.4; }
+.table-panel .table-pagination { padding-top: 12px; border-top: 1px solid var(--border-2); }
+.table-panel .table-pagination-actions > span { min-width: 62px; text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .table-panel .panel-actions { width: 100%; }
+  .table-search { flex: 1; }
+  .table-search .search-input { width: 100%; }
+  .table-panel table.dt { min-width: 700px; }
+}
 .table-panel > .panel-header { flex-wrap: wrap; }
 .table-panel .panel-tabs { flex-wrap: wrap; }
 .table-panel .panel-actions { flex-wrap: wrap; max-width: 100%; }

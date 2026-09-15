@@ -11,6 +11,7 @@ import { chartPalette, useTheme } from '../shared/theme.js';
 import { GAUGE, GAUGE_PATH, gaugeDash } from '../shared/gauge.js';
 import { motion, useReducedMotion } from 'motion/react';
 import { AnimatedNumber } from './AnimatedNumber.jsx';
+import { SourceDonut } from './SourceRing.jsx';
 
 // ───────────────────────────────────────────────────────────────
 // Trend chart — switchable bar/line/stacked + optional comparison
@@ -253,9 +254,9 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
           </div>
         </div>
       </div>
-      {mode==='line'&&dates.length>1&&dates.length<=400&&sources.length>0 ?
+      {dates.length>0&&dates.length<=400&&sources.length>0 ?
         <TrendBoundary key={dates.join('|')} fallback={<EChart option={option} height={320}/>}>
-          <Suspense fallback={<EChart option={option} height={320}/>}><BklitTrend rows={rows} dates={dates} sources={sources} compareRows={compareRows} compareDates={compareDates}/></Suspense>
+          <Suspense fallback={<EChart option={option} height={320}/>}><BklitTrend mode={mode} rows={rows} dates={dates} sources={sources} compareRows={compareRows} compareDates={compareDates}/></Suspense>
         </TrendBoundary> : <EChart option={option} height={320}/>}
     </div>
   );
@@ -263,137 +264,6 @@ function TrendChart({ rows, dates, sources, compareRows, compareDates, mode, onM
 
 // ───────────────────────────────────────────────────────────────
 // Donut chart — source share
-// ───────────────────────────────────────────────────────────────
-function SourceDonut({ rows, sources, total, onFocusSource, focused }) {
-  const pal = chartPalette(useTheme().theme);
-  const data = sources.map(src => {
-    let v = 0;
-    for (const r of rows) if (r.source === src) v += r.totalTokens;
-    return { name: src, value: v, color: U.getSourceColor(src) };
-  }).filter(d => d.value > 0).sort((a, b) => b.value - a.value);
-
-  const sum = data.reduce((s, d) => s + d.value, 0);
-  if (!sum) return <div className="panel source-donut-panel">
-    <div className="panel-header"><h2 className="panel-title">来源占比</h2>{focused && <button className="btn" onClick={() => onFocusSource(null)}>取消聚焦</button>}</div>
-    <div className="empty">当前筛选下暂无来源用量</div>
-  </div>;
-
-  const option = {
-    backgroundColor: 'transparent',
-    tooltip: {
-      trigger: 'item',
-      appendToBody: true,
-      confine: true,
-      transitionDuration: 0,
-      backgroundColor: pal.tooltipBg,
-      borderColor: pal.tooltipBorder,
-      borderWidth: 1,
-      textStyle: { color: pal.tooltipText, fontSize: 12 },
-      extraCssText: 'pointer-events:none;box-shadow:0 8px 24px rgb(0 0 0 / 0.08);border-radius:8px;',
-      formatter: p => `<div style="font-weight:600;margin-bottom:4px">${U.escapeHtml(p.name)}</div>
-        <div style="font-size:14px;font-weight:600">${U.compactCN(p.value)} tokens</div>
-        <div style="font-size:11px;color:${pal.tooltipMuted}">${U.usageShare(p.value, sum).replace('<', '&lt;')}</div>`
-    },
-    series: [{
-      type: 'pie',
-      animationDurationUpdate: 220,
-      animationEasingUpdate: 'cubicOut',
-      stateAnimation: {
-        duration: 140,
-        easing: 'cubicOut'
-      },
-      radius: ['48%', '78%'],
-      center: ['50%', '50%'],
-      minAngle: 2,
-      avoidLabelOverlap: true,
-      label: { show: false },
-      labelLine: { show: false },
-      itemStyle: {
-        borderColor: pal.sliceBorder,
-        borderWidth: 2,
-        shadowBlur: 12,
-        shadowOffsetY: 3,
-        shadowColor: 'rgba(15, 23, 42, 0.16)'
-      },
-      emphasis: {
-        scale: true,
-        scaleSize: 3,
-        itemStyle: {
-          shadowBlur: 12,
-          shadowOffsetY: 3,
-          shadowColor: 'rgba(15, 23, 42, 0.16)'
-        }
-      },
-      blur: {
-        itemStyle: { opacity: 1 }
-      },
-      data: data.map(d => {
-        // Rounded caps only on slices big enough to hold them — on tiny
-        // minAngle-forced slices the caps collapse into dots at the seam.
-        const borderRadius = sum && d.value / sum >= 0.03 ? 8 : 0;
-        return {
-          name: d.name,
-          value: d.value,
-          itemStyle: { color: d.color, borderRadius, opacity: focused && focused !== d.name ? 0.25 : 1 },
-          emphasis: {
-            itemStyle: {
-              color: d.color,
-              borderRadius,
-              opacity: 1,
-              borderColor: pal.sliceBorder,
-              borderWidth: 2,
-              shadowBlur: 12,
-              shadowOffsetY: 3,
-              shadowColor: 'rgba(15, 23, 42, 0.16)'
-            }
-          }
-        };
-      })
-    }]
-  };
-
-  return (
-    <div className="panel source-donut-panel">
-      <div className="panel-header source-donut-header">
-        <div>
-          <h2 className="panel-title">来源占比</h2>
-        </div>
-        {focused ? <button className="btn" onClick={() => onFocusSource(null)}>取消聚焦</button> : <p className="panel-sub source-donut-note">点击图例聚焦 · 顶部 1 项贡献 {data[0] && sum ? ((data[0].value / sum) * 100).toFixed(0) : 0}%</p>}
-      </div>
-      <div className="donut-stack">
-        <div className="donut-stage">
-          <EChart option={option} height={236}/>
-          <div style={{
-            position: 'absolute', inset: 0, display: 'grid', placeItems: 'center',
-            pointerEvents: 'none', textAlign: 'center'
-          }}>
-            <div>
-              <div style={{fontSize: 10.5, color: 'var(--muted)', letterSpacing: '0.08em', textTransform: 'uppercase'}}>合计</div>
-              <div style={{fontSize: 22, fontWeight: 600, fontVariantNumeric: 'tabular-nums', marginTop: 2}}>
-                {U.compactCN(sum)}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="legend">
-          {data.map(d => (
-            <button type="button" key={d.name} aria-pressed={focused === d.name}
-              className={`legend-item ${focused === d.name ? 'selected' : ''} ${focused && focused !== d.name ? 'dim' : ''}`}
-              onClick={() => onFocusSource(focused === d.name ? null : d.name)}>
-              <span className="legend-swatch" style={{background: d.color}}/>
-              <span className="legend-name" title={d.name}>{d.name}</span>
-              <span className="legend-val">{U.compactCN(d.value)}</span>
-              <span className="legend-pct">{U.usageShare(d.value, sum)}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────────
-// Top Models bar chart (HTML)
 // ───────────────────────────────────────────────────────────────
 function TopModels({ rows, onDrillModel }) {
   const reduceMotion = useReducedMotion();
@@ -580,10 +450,9 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
     // Clamp inside the grid: an overflowing tooltip expands the scrollable
     // area of .heatmap-scroll and pops a horizontal scrollbar on edge cells.
     const half = width / 2;
-    const left = Math.min(
-      Math.max(activeCell.anchor, half),
-      Math.max(half, gridRect.width - half)
-    );
+    const visibleLeft = Math.max(0, scrollRect.left - gridRect.left);
+    const visibleRight = Math.min(gridRect.width, scrollRect.right - gridRect.left);
+    const left = Math.min(Math.max(activeCell.anchor, visibleLeft + half), Math.max(visibleLeft + half, visibleRight - half));
     // The arrow tracks the cell, but it has to stay on the tooltip body —
     // off the edge the rotated square loses its cover and reads as a diamond.
     const maxShift = Math.max(0, half - ARROW_INSET);
@@ -603,7 +472,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
   }, [activeCell]);
 
   return (
-    <div className="panel">
+    <div className="panel heatmap-panel">
       <div className="panel-header">
         <div>
           <h2 className="panel-title">使用热力图</h2>
@@ -616,25 +485,26 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
           </p>
         </div>
         <span className="heat-scale">
-          少
+          安静
           <span className="heat-scale-cells" aria-hidden="true">
             {Array.from({length: 5}, (_, level) => (
               <span key={level} className={`heat-cell heat-level-${level}`}/>
             ))}
           </span>
-          多
+          活跃
         </span>
       </div>
       <div className="heatmap-layout">
         <div className="heatmap-main">
-          <div className="heatmap-scroll" ref={scrollRef}>
+          <div className="heatmap-window"><span>{showDates[0] || '—'} — {showDates.at(-1) || '—'}</span><span>每格 1 小时 · 色深按 Token 用量</span></div>
+          <div className="heatmap-scroll" ref={scrollRef} onScroll={() => setActiveCell(null)}>
             <div
               ref={gridRef}
               className="heatmap-grid"
               aria-busy={loading}
               style={{
-                gridTemplateColumns: '48px repeat(24, minmax(13px, 1fr))',
-                gridTemplateRows: `16px repeat(${showDates.length}, 14px) 10px 30px`
+                gridTemplateColumns: '48px repeat(24, minmax(16px, 1fr))',
+                gridTemplateRows: `20px repeat(${showDates.length}, 16px) 32px`
               }}>
               <div/>
               {HOURS_LABELS.map((h, i) => (
@@ -659,12 +529,22 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
                         className={`heat-cell heat-level-${heatLevel(cell.tokens)}`}
                         style={{gridRow: di + 2, gridColumn: hi + 2}}
                         aria-label={label}
+                        aria-describedby={activeCell?.date === d && activeCell?.hour === hi ? 'heatmap-cell-tip' : undefined}
                         data-date={d}
                         data-hour={hi}
                         data-tokens={cell.tokens}
                         data-events={cell.events}
                         onMouseEnter={event => showTooltip(event, d, hi, cell)}
                         onMouseLeave={() => setActiveCell(null)}
+                        onClick={event => showTooltip(event, d, hi, cell)}
+                        onKeyDown={event => {
+                          if (event.key === 'Escape') { setActiveCell(null); return; }
+                          const move = {ArrowLeft:-1,ArrowRight:1,ArrowUp:-24,ArrowDown:24}[event.key];
+                          if (!move) return;
+                          event.preventDefault();
+                          const cells = gridRef.current.querySelectorAll('button.heat-cell');
+                          cells[Math.max(0,Math.min(cells.length-1,di*24+hi+move))]?.focus();
+                        }}
                         onFocus={event => showTooltip(event, d, hi, cell)}
                         onBlur={() => setActiveCell(null)} />
                     );
@@ -687,7 +567,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
                 <div
                   ref={tipRef}
                   className={`heat-tooltip${tipBox?.below ? ' heat-tooltip-below' : ''}`}
-                  role="tooltip"
+                  role="tooltip" id="heatmap-cell-tip"
                   style={{
                     // Before measuring, park it mid-grid so it cannot widen the
                     // scroll area, and keep it hidden until it is placed.
@@ -710,6 +590,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
               )}
             </div>
           </div>
+          <p className="heatmap-help">悬浮或点按查看明细 · 方向键切换格子<span> · 窄屏可左右滑动</span></p>
         </div>
 
         <aside className="heat-insights" aria-label="活跃摘要">
@@ -736,19 +617,19 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
             </div>
             <div className="heat-stat">
               <span>峰值日期</span>
-              <strong>{peakDay.date === '—' ? '—' : peakDay.date.slice(5)}</strong>
+              <strong>{peakDay.total > 0 ? peakDay.date.slice(5) : '—'}</strong>
               <small>{U.compactCN(peakDay.total)} tokens</small>
             </div>
             <div className="heat-stat" style={{gridColumn: '1 / -1'}}>
               <span>高峰时段</span>
-              <strong>{String(peakHourIndex).padStart(2, '0')}:00</strong>
+              <strong>{weekdayGrandTotal > 0 ? `${String(peakHourIndex).padStart(2, '0')}:00` : '—'}</strong>
               <small>{U.compactCN(hourTotals[peakHourIndex])} tokens</small>
             </div>
           </div>
 
           <div className="heat-weekday-head">
             <span>星期分布</span>
-            <small>高峰 {WEEKDAY_LABELS[topWeekdayIndex]}</small>
+            <small>{weekdayGrandTotal > 0 ? `高峰 ${WEEKDAY_LABELS[topWeekdayIndex]}` : '暂无用量'}</small>
           </div>
           <div className="heat-weekdays">
             {weekdayTotals.map((value, index) => {
@@ -757,7 +638,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
                 <div className="heat-weekday" key={WEEKDAY_LABELS[index]}>
                   <span>{WEEKDAY_LABELS[index]}</span>
                   <div className="heat-weekday-track" aria-label={`${WEEKDAY_LABELS[index]}占比 ${share}%`}>
-                    <div style={{width: value ? `${Math.max(4, (value / weekdayMax) * 100)}%` : 0}}/>
+                    <div style={{height: value ? `${(value / weekdayMax) * 100}%` : 0}}/>
                   </div>
                   <strong>{share}%</strong>
                 </div>
@@ -766,7 +647,7 @@ function Heatmap({ rows, dates, loading = false, error = null }) {
           </div>
           <div className="heat-week-meta">
             <span>工作日 <b>{weekdayShare}%</b></span>
-            <span>周末 <b>{100 - weekdayShare}%</b></span>
+            <span>周末 <b>{weekdayGrandTotal ? 100 - weekdayShare : 0}%</b></span>
           </div>
         </aside>
       </div>
