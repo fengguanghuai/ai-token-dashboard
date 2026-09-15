@@ -232,7 +232,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
     compare: true
   }));
 
-  const [trendMode, setTrendMode] = useState('line');
+  const [trendMode, setTrendMode] = useState('stacked');
   const [drill, setDrill] = useState(null);
   const [focusedSource, setFocusedSource] = useState(null);
 
