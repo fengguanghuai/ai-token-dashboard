@@ -1,12 +1,19 @@
 const formatters = new Map();
+let resolvedZone;
 
 export function resolveDisplayTz() {
-  const tz = (process.env.DISPLAY_TZ || '').trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const configured = (process.env.DISPLAY_TZ || '').trim();
+  const processZone = process.env.TZ;
+  if (resolvedZone?.configured === configured && resolvedZone.processZone === processZone) return resolvedZone.zone;
+  let zone = configured || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   try {
-    if (!/^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(tz)) throw new Error('Invalid timezone');
-    new Intl.DateTimeFormat('en', { timeZone: tz }).format();
-    return tz;
-  } catch { return 'UTC'; }
+    if (!/^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(zone)) throw new Error('Invalid timezone');
+    new Intl.DateTimeFormat('en', { timeZone: zone });
+  } catch { zone = 'UTC'; }
+  // Validate configuration once, rather than creating Intl formatters for every
+  // cached file and usage event. Environment changes still invalidate the cache.
+  resolvedZone = { configured, processZone, zone };
+  return zone;
 }
 
 export function zonedParts(value, tz = resolveDisplayTz()) {
