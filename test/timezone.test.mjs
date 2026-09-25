@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hourExpression, resolveDisplayTz, todayExpression } from '../src/db.mjs';
+import { zonedParts } from '../src/timezone.mjs';
 
 function withEnv(key, value, fn) {
   const previous = process.env[key];
@@ -32,6 +33,26 @@ test('resolveDisplayTz falls back to the machine zone when DISPLAY_TZ is unset',
 test('resolveDisplayTz rejects an injection-shaped DISPLAY_TZ and falls back to UTC', () => {
   withEnv('DISPLAY_TZ', "Asia/Shanghai'; DROP TABLE daily_usage;--", () => {
     assert.equal(resolveDisplayTz(), 'UTC');
+  });
+});
+
+test('cached timezone resolution follows DISPLAY_TZ and process TZ changes, including invalid zone fallback', () => {
+  const time = '2026-09-01T17:00:00Z';
+  withEnv('DISPLAY_TZ', 'Asia/Shanghai', () => {
+    assert.deepEqual(zonedParts(time), { date: '2026-09-02', hour: 1 });
+    assert.deepEqual(zonedParts('2026-09-02T17:00:00Z'), { date: '2026-09-03', hour: 1 });
+  });
+  withEnv('DISPLAY_TZ', 'Not/AZone', () => assert.deepEqual(zonedParts(time), { date: '2026-09-01', hour: 17 }));
+  withEnv('DISPLAY_TZ', undefined, () => {
+    withEnv('TZ', 'UTC', () => assert.deepEqual(zonedParts(time), { date: '2026-09-01', hour: 17 }));
+    withEnv('TZ', 'Asia/Tokyo', () => assert.deepEqual(zonedParts(time), { date: '2026-09-02', hour: 2 }));
+  });
+});
+
+test('reused timezone formatters keep daylight-saving boundaries correct', () => {
+  withEnv('DISPLAY_TZ', 'America/New_York', () => {
+    assert.deepEqual(zonedParts('2026-03-08T06:59:59Z'), { date: '2026-03-08', hour: 1 });
+    assert.deepEqual(zonedParts('2026-03-08T07:00:00Z'), { date: '2026-03-08', hour: 3 });
   });
 });
 

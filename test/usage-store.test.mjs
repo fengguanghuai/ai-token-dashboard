@@ -75,3 +75,23 @@ test('full replacement deletes obsolete daily and workspace rows only within its
     assert.equal((await readSnapshot(db)).daily.length, 1);
   } finally { await db.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('incremental writes skip unchanged events but retain old-date additions and metadata corrections', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'usage-changes-'));
+  const db = await openDb(join(root, 'usage.sqlite'));
+  try {
+    await writeSnapshot(db, { daily: [], time: [event(), event({ eventKey: 'unchanged' })], sessions: [] });
+    const previous = await readSnapshot(db);
+    await db.exec('CREATE TABLE writes (event_key TEXT)');
+    await db.exec('CREATE TRIGGER changed AFTER UPDATE ON time_usage BEGIN INSERT INTO writes VALUES (new.event_key); END');
+    await db.exec('CREATE TRIGGER added AFTER INSERT ON time_usage BEGIN INSERT INTO writes VALUES (new.event_key); END');
+    await writeSnapshot(db, previous, { previous });
+    assert.equal((await db.all('SELECT * FROM writes')).length, 0);
+    const next = structuredClone(previous);
+    next.time[0].pricingVersion = '2026-09-25T00:00:00Z';
+    next.time.push(event({ eventKey: 'late-old-event', eventTime: '2025-01-01T00:00:00Z', usageDate: '2025-01-01' }));
+    await writeSnapshot(db, next, { previous });
+    assert.deepEqual((await db.all('SELECT event_key FROM writes ORDER BY event_key')).map(row => row.event_key), ['a', 'late-old-event']);
+    assert.equal((await readSnapshot(db)).time.find(row => row.eventKey === 'a').pricingVersion, '2026-09-25T00:00:00Z');
+  } finally { await db.close(); rmSync(root, { recursive: true, force: true }); }
+});

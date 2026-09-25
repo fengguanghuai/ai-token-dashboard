@@ -1,7 +1,10 @@
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage, fromStored, TABLES, tokenFields } from './db-batch.mjs';
 import { calculateCost, hasModelPricing } from './pricing.mjs';
 
-export const rowKey = (kind, row) => JSON.stringify(TABLES[kind].keys.map(column => row[TABLES[kind].fields.find(([c]) => c === column)[1]] ?? ''));
+const keyFields = Object.fromEntries(Object.entries(TABLES).map(([kind, table]) =>
+  [kind, table.keys.map(column => table.fields.find(([c]) => c === column)[1])]
+));
+export const rowKey = (kind, row) => JSON.stringify(keyFields[kind].map(field => row[field] ?? ''));
 const bucketKey = row => JSON.stringify([row.device, row.source, row.usageDate, row.model || '']);
 const sameUsage = (a, b) => tokenFields.every(key => (a[key] || 0) === (b[key] || 0));
 const sum = (rows, key) => rows.reduce((n, row) => n + (row[key] || 0), 0);
@@ -110,7 +113,11 @@ export async function writeSnapshot(db, snapshot, { scopes = [], full = false, p
     for (const [kind, write] of [['daily', batchUpsertDaily], ['time', batchUpsertTimeUsage], ['sessions', batchUpsertSession]]) {
       const old = new Map((previous?.[kind] || []).map(row => [rowKey(kind, row), row]));
       const fields = TABLES[kind].fields.filter(([, key]) => key !== 'pricingLockedAt');
-      const changed = snapshot[kind].filter(row => full || !old.has(rowKey(kind, row)) || fields.some(([, key, fallback]) => (row[key] ?? fallback) !== (old.get(rowKey(kind, row))[key] ?? fallback)));
+      const changed = snapshot[kind].filter(row => {
+        if (full) return true;
+        const stored = old.get(rowKey(kind, row));
+        return !stored || fields.some(([, key, fallback]) => (row[key] ?? fallback) !== (stored[key] ?? fallback));
+      });
       await write(tx, changed);
     }
   });
