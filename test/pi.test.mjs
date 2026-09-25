@@ -190,10 +190,11 @@ test('missing session directories yield empty results and env paths use official
   await withSessions({}, async root => {
     const previous = process.env.PI_CODING_AGENT_DIR;
     try {
-      process.env.PI_CODING_AGENT_DIR = '/custom/pi-agent';
+      const agentDirectory = join(root, 'custom-agent');
+      process.env.PI_CODING_AGENT_DIR = agentDirectory;
       assert.deepEqual(sessionRoots(), [root]);
       delete process.env.PI_CODING_AGENT_SESSION_DIR;
-      assert.deepEqual(sessionRoots(), ['/custom/pi-agent/sessions']);
+      assert.deepEqual(sessionRoots(), [join(agentDirectory, 'sessions')]);
       process.env.PI_CODING_AGENT_SESSION_DIR = join(root, 'missing');
       assert.deepEqual(await collect(), { graphJson: { contributions: [] }, modelsJson: { entries: [] }, eventsJson: { events: [] } });
     } finally {
