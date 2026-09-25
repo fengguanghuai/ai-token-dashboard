@@ -15,7 +15,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': `http://127.0.0.1:${process.env.API_PORT || '4173'}`
+      '/api': {
+        target: `http://127.0.0.1:${process.env.API_PORT || '4173'}`,
+        // Preserve the browser's Host/Origin pair. Vite's string shorthand
+        // enables changeOrigin and makes legitimate local POSTs look cross-site.
+        changeOrigin: false
+      }
     }
   }
 });
