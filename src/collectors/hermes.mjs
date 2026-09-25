@@ -17,7 +17,7 @@ import { canonicalProvider, inferProviderFromModel, localDateFromTimestamp, norm
 
 export const CLIENT_KEY = 'hermes';
 export const SOURCE_LABEL = 'Hermes Agent';
-const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ export async function collect(pricingData = null) {
         workspaceLabel: sessId,
         model,
         tokens,
-        cost
+        cost, costBasis: originalCost > 0 ? 'recorded' : undefined
       });
     }
 

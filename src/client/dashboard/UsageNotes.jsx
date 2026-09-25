@@ -32,8 +32,12 @@ export function UsageNotes({ rows, pricing }) {
       <section><h3>缓存怎么算</h3>
         <p>缓存 = 缓存读取 + 缓存创建；命中率 = 缓存读取 ÷ 总 Token。缓存节省费用是估算，不是实际退款。</p>
       </section>
+      <section><h3>数据完整性</h3>
+        <p>项目归属和最后活动来自事件明细，不按最大项目推算。缺少明细的历史用量不会分配给某个项目。</p>
+        <p>当前范围有 {rows.filter(r => ['legacy_unknown', 'unknown'].includes(r.costBasis)).length} 组费用未保存完整计价依据；{rows.filter(r => r.reconciliation === 'missing_details').length} 组汇总缺少明细，{rows.filter(r => ['token_difference', 'cost_difference'].includes(r.reconciliation)).length} 组汇总与明细存在差异。不同费用口径保留原值，不自动重算。</p>
+      </section>
       <section><h3>费用不是账单</h3>
-        <p>显示已有记录的费用汇总，可能来自工具记录或价格估算，不等同于订阅支出或实际账单。本页不会按新价格重算历史记录。</p>
+        <p>显示已有记录的费用汇总，可能来自工具记录或价格估算；旧记录未保存计价依据时标为未知口径，不等同于订阅支出或实际账单。本页不会按新价格重算历史记录。新增漏算用量单独补入，既有费用保留。</p>
         <p>主价格目录快照：{date && Number.isFinite(date.getTime()) ? U.formatTs(date.toISOString()) : '更新时间未知'}。不代表所有模型价格的生效时间或历史记录的计价版本。</p>
         <p>未匹配价格且没有已记录费用的用量无法估价，总费用可能不完整；零费用不一定代表免费。</p>
         {unmatched.length > 0 && <p>当前未匹配价格：{unmatched.join('、')}。已有费用仍保留。</p>}

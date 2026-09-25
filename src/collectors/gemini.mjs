@@ -22,6 +22,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, extname, basename } from 'node:path';
 import { calculateCost } from '../pricing.mjs';
+import { configuredPath } from '../collector-config.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 import { cachedParse, flushCache } from './parse-cache.mjs';
 
@@ -34,7 +35,7 @@ const CACHE_VERSION = 1;   // bump when parsed event shape changes
 // ---------------------------------------------------------------------------
 
 function getTmpDir() {
-  return join(homedir(), '.gemini', 'tmp');
+  return configuredPath('gemini', 'tmpDir', join(homedir(), '.gemini', 'tmp'));
 }
 
 // ---------------------------------------------------------------------------

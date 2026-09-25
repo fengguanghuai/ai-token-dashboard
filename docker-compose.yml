@@ -5,6 +5,9 @@ services:
       - "4173:4173"
     environment:
       PORT: "4173"
+      HOST: "0.0.0.0"
+      DASHBOARD_TOKEN: "${DASHBOARD_TOKEN:-}"
+      DISPLAY_TZ: "${DISPLAY_TZ:-UTC}"
       INGEST_TOKEN: "${INGEST_TOKEN:?Set INGEST_TOKEN before starting the hub}"
       DATABASE_URL: "${DATABASE_URL:-}"
       DB_DRIVER: "${DB_DRIVER:-sqlite}"

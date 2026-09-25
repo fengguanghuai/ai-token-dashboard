@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS daily_usage (
   reasoning_output_tokens BIGINT NOT NULL DEFAULT 0,
   total_tokens BIGINT NOT NULL DEFAULT 0,
   cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost_basis TEXT NOT NULL DEFAULT 'legacy_unknown',
+  pricing_version TEXT,
   pricing_locked_at TEXT,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (device, source, usage_date, model)
@@ -58,6 +60,8 @@ CREATE TABLE IF NOT EXISTS time_usage (
   reasoning_output_tokens BIGINT NOT NULL DEFAULT 0,
   total_tokens BIGINT NOT NULL DEFAULT 0,
   cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0,
+  cost_basis TEXT NOT NULL DEFAULT 'legacy_unknown',
+  pricing_version TEXT,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (device, source, event_key)
 );

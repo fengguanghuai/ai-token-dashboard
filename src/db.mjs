@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import { resolveDisplayTz, zonedParts } from './timezone.mjs';
+export { resolveDisplayTz } from './timezone.mjs';
 
 export const defaultDbPath = resolve(process.cwd(), 'data', 'usage.sqlite');
 const schemaDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'db');
@@ -13,16 +15,16 @@ const schemaDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'db');
  * Configuration priority: explicit input -> DATABASE_URL -> DB_DRIVER/DB_PATH -> SQLite.
  * A plain string is treated as a SQLite path unless it starts with a database URL scheme.
  */
-export async function openDb(input) {
+export async function openDb(input, { readOnly = false } = {}) {
   const config = resolveDbConfig(input);
   let db;
 
-  if (config.driver === 'sqlite') db = openSqlite(config.path);
+  if (config.driver === 'sqlite') db = openSqlite(config.path, readOnly);
   else if (config.driver === 'postgres') db = await openPostgres(config.url);
   else if (config.driver === 'mysql') db = await openMysql(config.url);
   else throw new Error(`Unsupported database driver: ${config.driver}`);
 
-  await initSchema(db);
+  if (!readOnly) await initSchema(db);
   return db;
 }
 
@@ -59,12 +61,14 @@ function isDatabaseUrl(value) {
   return /^(?:postgres(?:ql)?|mysql2?|sqlite):/i.test(String(value || ''));
 }
 
-function openSqlite(path) {
-  mkdirSync(dirname(path), { recursive: true });
-  const client = new DatabaseSync(path);
+function openSqlite(path, readOnly = false) {
+  if (!readOnly) mkdirSync(dirname(path), { recursive: true });
+  const client = new DatabaseSync(path, { readOnly });
   client.exec('PRAGMA busy_timeout = 10000');
-  client.exec('PRAGMA journal_mode = WAL');
+  if (!readOnly) client.exec('PRAGMA journal_mode = WAL');
   client.exec('PRAGMA foreign_keys = ON');
+  client.function('display_hour', { deterministic: true }, (value, tz) => zonedParts(value, tz)?.hour ?? null);
+  client.function('display_date', { deterministic: true }, (value, tz) => zonedParts(value, tz)?.date ?? null);
 
   const db = {
     driver: 'sqlite',
@@ -164,6 +168,7 @@ async function openMysql(url) {
     password: decodeURIComponent(parsed.password),
     database: parsed.pathname.replace(/^\//, ''),
     waitForConnections: true,
+    decimalNumbers: true,
     connectionLimit: Number(process.env.DB_POOL_SIZE) || 10,
     connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 10_000,
     ssl: sslMode && !['false', 'disabled', '0'].includes(sslMode.toLowerCase())
@@ -224,6 +229,17 @@ async function initSchema(db) {
     }
   }
 
+  for (const table of ['daily_usage', 'time_usage']) {
+    for (const [column, definition] of [['cost_basis', "VARCHAR(64) NOT NULL DEFAULT 'legacy_unknown'"], ['pricing_version', 'VARCHAR(64)']]) {
+      if (db.driver === 'sqlite') await ensureSqliteColumn(db, table, column, definition);
+      else if (db.driver === 'postgres') await db.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
+      else {
+        const existing = await db.get('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?', [table, column]);
+        if (!existing) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      }
+    }
+  }
+
   const now = nowExpression(db.driver);
   const today = todayExpression(db.driver);
   await db.run(`
@@ -268,23 +284,13 @@ export function nowExpression(driver) {
  * Invalid values fall back to UTC — the value is interpolated into SQL, so it is
  * validated against IANA name characters to keep it injection-safe.
  */
-export function resolveDisplayTz() {
-  const configured = (process.env.DISPLAY_TZ || '').trim();
-  const tz = configured || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  if (!/^[A-Za-z][A-Za-z0-9_+/-]{0,63}$/.test(tz)) {
-    console.warn(`[db] Ignoring invalid DISPLAY_TZ "${tz}", falling back to UTC`);
-    return 'UTC';
-  }
-  return tz;
-}
-
 export function todayExpression(driver, tz = resolveDisplayTz()) {
   // The price-lock "today" boundary follows the display timezone so it matches
   // each user's local day (and the day buckets the source tools report).
   if (driver === 'postgres') return `(CURRENT_TIMESTAMP AT TIME ZONE '${tz}')::date::text`;
   // CONVERT_TZ needs the MySQL timezone tables loaded; falls back to NULL without them.
   if (driver === 'mysql') return `DATE_FORMAT(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '${tz}'), '%Y-%m-%d')`;
-  return `date('now', 'localtime')`;
+  return `display_date(datetime('now'), '${tz}')`;
 }
 
 /** Keep only the most recent collection run rows. */
@@ -310,45 +316,8 @@ export async function pruneCollectionRuns(db, keep = Number(process.env.COLLECTI
 }
 
 export async function upsertTimeUsage(db, row) {
-  const values = [
-    row.device, row.source, row.eventKey, row.eventTime, row.usageDate, row.model || '',
-    row.projectPath || null, row.sessionId || null, row.inputTokens || 0,
-    row.outputTokens || 0, row.cacheCreationTokens || 0, row.cacheReadTokens || 0,
-    row.reasoningOutputTokens || 0, row.totalTokens || 0, row.costUSD || 0
-  ];
-  const now = nowExpression(db.driver);
-  const columns = `
-    device, source, event_key, event_time, usage_date, model, project_path, session_id,
-    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-    reasoning_output_tokens, total_tokens, cost_usd, updated_at
-  `;
-
-  if (db.driver === 'mysql') {
-    await db.run(`
-      INSERT INTO time_usage (row_key, ${columns})
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})
-      ON DUPLICATE KEY UPDATE
-        event_time = VALUES(event_time), usage_date = VALUES(usage_date), model = VALUES(model),
-        project_path = VALUES(project_path), session_id = VALUES(session_id),
-        input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-        cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-        reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-        cost_usd = VALUES(cost_usd), updated_at = ${now}
-    `, [mysqlRowKey(row.device, row.source, row.eventKey), ...values]);
-    return;
-  }
-
-  await db.run(`
-    INSERT INTO time_usage (${columns})
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})
-    ON CONFLICT(device, source, event_key) DO UPDATE SET
-      event_time = excluded.event_time, usage_date = excluded.usage_date, model = excluded.model,
-      project_path = excluded.project_path, session_id = excluded.session_id,
-      input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-      cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-      reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-      cost_usd = excluded.cost_usd, updated_at = ${now}
-  `, values);
+  const { batchUpsertTimeUsage } = await import('./db-batch.mjs');
+  return batchUpsertTimeUsage(db, [row]);
 }
 
 export async function deleteTimeUsageForSource(db, device, source) {
@@ -356,92 +325,13 @@ export async function deleteTimeUsageForSource(db, device, source) {
 }
 
 export async function upsertDaily(db, row) {
-  const values = [
-    row.device, row.source, row.usageDate, row.model || '', row.inputTokens || 0,
-    row.outputTokens || 0, row.cacheCreationTokens || 0, row.cacheReadTokens || 0,
-    row.reasoningOutputTokens || 0, row.totalTokens || 0, row.costUSD || 0, row.usageDate
-  ];
-  const now = nowExpression(db.driver);
-  const today = todayExpression(db.driver);
-
-  if (db.driver === 'mysql') {
-    await db.run(`
-      INSERT INTO daily_usage (
-        row_key, device, source, usage_date, model, input_tokens, output_tokens,
-        cache_creation_tokens, cache_read_tokens, reasoning_output_tokens,
-        total_tokens, cost_usd, pricing_locked_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? < ${today}, ${now}, NULL), ${now})
-      ON DUPLICATE KEY UPDATE
-        input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-        cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-        reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-        cost_usd = IF(daily_usage.usage_date < ${today}, daily_usage.cost_usd, VALUES(cost_usd)),
-        pricing_locked_at = IF(
-          daily_usage.usage_date < ${today}, COALESCE(daily_usage.pricing_locked_at, ${now}), NULL
-        ),
-        updated_at = ${now}
-    `, [mysqlRowKey(row.device, row.source, row.usageDate, row.model || ''), ...values]);
-    return;
-  }
-
-  await db.run(`
-    INSERT INTO daily_usage (
-      device, source, usage_date, model, input_tokens, output_tokens,
-      cache_creation_tokens, cache_read_tokens, reasoning_output_tokens,
-      total_tokens, cost_usd, pricing_locked_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? < ${today} THEN ${now} ELSE NULL END, ${now})
-    ON CONFLICT(device, source, usage_date, model) DO UPDATE SET
-      input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-      cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-      reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-      cost_usd = CASE WHEN daily_usage.usage_date < ${today} THEN daily_usage.cost_usd ELSE excluded.cost_usd END,
-      pricing_locked_at = CASE
-        WHEN daily_usage.usage_date < ${today} THEN COALESCE(daily_usage.pricing_locked_at, ${now})
-        ELSE NULL
-      END,
-      updated_at = ${now}
-  `, values);
+  const { batchUpsertDaily } = await import('./db-batch.mjs');
+  return batchUpsertDaily(db, [row]);
 }
 
 export async function upsertSession(db, row) {
-  const values = [
-    row.device, row.source, row.sessionId, row.lastActivity || null, row.projectPath || null,
-    row.inputTokens || 0, row.outputTokens || 0, row.cacheCreationTokens || 0,
-    row.cacheReadTokens || 0, row.reasoningOutputTokens || 0, row.totalTokens || 0,
-    row.costUSD || 0
-  ];
-  const now = nowExpression(db.driver);
-
-  if (db.driver === 'mysql') {
-    await db.run(`
-      INSERT INTO session_usage (
-        row_key, device, source, session_id, last_activity, project_path, input_tokens,
-        output_tokens, cache_creation_tokens, cache_read_tokens,
-        reasoning_output_tokens, total_tokens, cost_usd, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})
-      ON DUPLICATE KEY UPDATE
-        last_activity = VALUES(last_activity), project_path = VALUES(project_path),
-        input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-        cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-        reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-        cost_usd = VALUES(cost_usd), updated_at = ${now}
-    `, [mysqlRowKey(row.device, row.source, row.sessionId), ...values]);
-    return;
-  }
-
-  await db.run(`
-    INSERT INTO session_usage (
-      device, source, session_id, last_activity, project_path, input_tokens,
-      output_tokens, cache_creation_tokens, cache_read_tokens,
-      reasoning_output_tokens, total_tokens, cost_usd, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})
-    ON CONFLICT(device, source, session_id) DO UPDATE SET
-      last_activity = excluded.last_activity, project_path = excluded.project_path,
-      input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-      cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-      reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-      cost_usd = excluded.cost_usd, updated_at = ${now}
-  `, values);
+  const { batchUpsertSession } = await import('./db-batch.mjs');
+  return batchUpsertSession(db, [row]);
 }
 
 export async function recordRun(db, row) {
@@ -469,9 +359,15 @@ export function hourExpression(driver, column = 'event_time', tz = resolveDispla
   if (driver === 'mysql') {
     return `HOUR(CONVERT_TZ(STR_TO_DATE(LEFT(${column}, 19), '%Y-%m-%dT%H:%i:%s'), '+00:00', '${tz}'))`;
   }
-  return `CAST(strftime('%H', ${column}, 'localtime') AS INTEGER)`;
+  return `display_hour(${column}, '${tz}')`;
 }
 
 export function mysqlRowKey(...parts) {
   return createHash('sha256').update(parts.map(part => String(part ?? '')).join('\0')).digest('hex');
+}
+
+export function dateExpression(driver, column = 'event_time', tz = resolveDisplayTz()) {
+  if (driver === 'postgres') return `to_char(CAST(${column} AS timestamptz) AT TIME ZONE '${tz}', 'YYYY-MM-DD')`;
+  if (driver === 'mysql') return `DATE_FORMAT(CONVERT_TZ(STR_TO_DATE(LEFT(${column}, 19), '%Y-%m-%dT%H:%i:%s'), '+00:00', '${tz}'), '%Y-%m-%d')`;
+  return `display_date(${column}, '${tz}')`;
 }

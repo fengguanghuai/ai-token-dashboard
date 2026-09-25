@@ -29,7 +29,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 export const CLIENT_KEY = 'grok';
 export const SOURCE_LABEL = 'Grok CLI';
 const CACHE_VERSION = 2;   // bump when parseSessionFile behavior or output changes
-const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -294,7 +294,7 @@ export async function collect(pricingData = null) {
           workspaceLabel: workspace,
           model,
           tokens,
-          cost
+          cost, costBasis: recordedCost != null ? 'recorded' : undefined
         });
       }
 

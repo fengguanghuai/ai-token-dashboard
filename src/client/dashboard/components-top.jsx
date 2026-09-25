@@ -203,7 +203,7 @@ function Topbar({ lastSync, onRefresh, refreshing, onCollect, collecting, collec
 // ───────────────────────────────────────────────────────────────
 // Filter bar
 // ───────────────────────────────────────────────────────────────
-function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, onExportTrend, quota }) {
+function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, availableRange, onExport, onExportTrend, exportDisabled = false, quota }) {
   const reduceMotion = useReducedMotion();
   const exportRef = useRef(null);
   useEffect(() => {
@@ -370,8 +370,8 @@ function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, 
         <details className="export-menu" ref={exportRef}>
           <summary className="btn">导出 CSV ▾</summary>
           <div className="export-options">
-            <button className="btn" onClick={event => { onExport(); event.currentTarget.closest('details').open = false; }}>用量明细</button>
-            <button className="btn" onClick={event => { onExportTrend(); event.currentTarget.closest('details').open = false; }}>每日趋势</button>
+            <button className="btn" disabled={exportDisabled} onClick={event => { onExport(); event.currentTarget.closest('details').open = false; }}>用量明细</button>
+            <button className="btn" disabled={exportDisabled} onClick={event => { onExportTrend(); event.currentTarget.closest('details').open = false; }}>每日趋势</button>
           </div>
         </details>
         </div>

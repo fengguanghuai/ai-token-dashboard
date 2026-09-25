@@ -11,7 +11,11 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -36,3 +40,38 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --audit-level=low
+
+  database-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: token_test
+          POSTGRES_PASSWORD: token_test
+          POSTGRES_DB: token_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U token_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: token_test
+          MYSQL_DATABASE: token_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ptoken_test"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: node --test test/remote-db.test.mjs
+        env:
+          TEST_POSTGRES_URL: postgresql://token_test:token_test@127.0.0.1:5432/token_test
+          TEST_MYSQL_URL: mysql://root:token_test@127.0.0.1:3306/token_test

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { U } from '../shared/utils.js';
+import { fetchTimeRange, projectTotals, timeRangeForFilters } from '../shared/usage-data.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
 import { TablePanel, DrillDrawer } from './components-tables.jsx';
@@ -20,7 +21,10 @@ function summarizeCollectOutput(stdout) {
 
 export function App() {
   const [M, setM] = useState(null);
-  const [timeRows, setTimeRows] = useState(null);   // null until the precise view asks for it
+  const [timeState, setTimeState] = useState({ rows: [], key: null, loading: false, error: null });
+  const timeRequest = useRef(null);
+  const timeLoadedKey = useRef(null);
+  const [timeRevision, setTimeRevision] = useState(0);
   const [hourlyRows, setHourlyRows] = useState(null);
   const [hourlyError, setHourlyError] = useState(null);
   const [quota, setQuota] = useState(null);         // live subscription-window quota
@@ -28,21 +32,29 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [collectStatus, setCollectStatus] = useState(null);
-  const timeRequested = useRef(false);
 
-  // ───── Lazy per-event (time) data — only the precise view needs it ─────
-  const loadTime = useCallback(() => {
-    return fetch('/api/time')
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => setTimeRows(data.time || []))
-      .catch(() => {});
+
+  const ensureTime = useCallback((range, { force = false } = {}) => {
+    const key = JSON.stringify(range);
+    if (!force && (timeLoadedKey.current === key || timeRequest.current?.key === key)) return;
+    timeRequest.current?.controller.abort();
+    const controller = new AbortController();
+    timeRequest.current = { key, controller };
+    setTimeState({ rows: [], key, loading: true, error: null });
+    fetchTimeRange(range, { signal: controller.signal })
+      .then(rows => {
+        if (controller.signal.aborted) return;
+        timeLoadedKey.current = key;
+        setTimeState({ rows, key, loading: false, error: null });
+      })
+      .catch(error => {
+        if (controller.signal.aborted) return;
+        timeLoadedKey.current = null;
+        setTimeState({ rows: [], key, loading: false, error: error.message });
+      })
+      .finally(() => { if (timeRequest.current?.controller === controller) timeRequest.current = null; });
   }, []);
-
-  const ensureTime = useCallback(() => {
-    if (timeRequested.current) return;
-    timeRequested.current = true;
-    loadTime();
-  }, [loadTime]);
+  useEffect(() => () => timeRequest.current?.controller.abort(), []);
 
   // The heatmap uses compact server-side hourly aggregates rather than the
   // full per-event payload used by the precise table view.
@@ -93,11 +105,12 @@ export function App() {
         });
         setLoadError(null);
         // If the precise view already pulled time data, refresh it too.
-        if (timeRequested.current) loadTime();
+        timeLoadedKey.current = null;
+        setTimeRevision(revision => revision + 1);
       })
       .catch(err => setLoadError(err.message))
       .finally(() => setRefreshing(false));
-  }, [loadHourly, loadTime, loadQuota]);
+  }, [loadHourly, loadQuota]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -199,7 +212,8 @@ export function App() {
     <Dashboard
       M={{
         ...M,
-        time: timeRows || EMPTY_TIME,
+        time: timeState.rows,
+        timeState, timeRevision,
         hourly: hourlyRows || EMPTY_TIME,
         hourlyLoading: hourlyRows === null,
         hourlyError
@@ -236,40 +250,44 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   const [drill, setDrill] = useState(null);
   const [focusedSource, setFocusedSource] = useState(null);
 
-  // The precise (datetime) view is the only consumer of per-event data; fetch it
-  // the first time the user switches into that mode.
+  const preciseRange = useMemo(() => {
+    if (!filters.precise) return null;
+    try { return timeRangeForFilters(filters); } catch { return null; }
+  }, [filters.precise, filters.startDateTime, filters.endDateTime, filters.compare]);
+  const preciseKey = preciseRange ? JSON.stringify(preciseRange) : null;
+  const preciseReady = filters.precise && preciseKey && M.timeState.key === preciseKey && !M.timeState.loading && !M.timeState.error;
   useEffect(() => {
-    if (filters.precise) onNeedTime?.();
-  }, [filters.precise, onNeedTime]);
+    if (preciseRange) onNeedTime?.(preciseRange, { force: true });
+  }, [preciseKey, M.timeRevision, onNeedTime]);
 
   // Build option lists
-  const filterBaseRows = filters.precise && M.time.length ? M.time : M.daily;
-  const sourceOptions = useMemo(() => U.sourceOptions(filterBaseRows, filters,
-    filters.precise && M.time.length > 0), [filterBaseRows, filters, M.time.length]);
+  const filterBaseRows = M.daily;
+  const sourceOptions = useMemo(() => U.sourceOptions(filters.precise ? M.time : filterBaseRows, filters,
+    filters.precise), [filterBaseRows, filters, M.time]);
   const allSources = useMemo(() => sourceOptions.map(o => o.source), [sourceOptions]);
   const allDevices = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.device))), [filterBaseRows]);
   const allModels  = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.model))).filter(Boolean), [filterBaseRows]);
   const availableRange = useMemo(() => {
     const dates = M.daily.map(r => r.usageDate).filter(Boolean).sort();
-    const times = M.time.map(r => r.eventTime).filter(Boolean).sort();
+    const times = [M.eventRange?.start, M.eventRange?.end].filter(Boolean).sort();
     return {
       startDate: dates[0] || U.daysAgo(0),
       endDate: dates[dates.length - 1] || U.daysAgo(0),
       startDateTime: times[0] ? U.toDateTimeLocalValue(new Date(times[0])) : U.startOfDayLocal(dates[0] || U.daysAgo(0)),
       endDateTime: times[times.length - 1] ? U.toDateTimeLocalValue(new Date(times[times.length - 1])) : U.endOfDayLocal(dates[dates.length - 1] || U.daysAgo(0))
     };
-  }, [M.daily, M.time]);
+  }, [M.daily, M.eventRange]);
 
   // ───── Filtered data ─────
-  const sourceContextRows = useMemo(() => filters.precise && M.time.length
-    ? U.filterTime(M.time, filters) : U.filterDaily(M.daily, filters), [filters, M.time, M.daily]);
+  const sourceContextRows = useMemo(() => filters.precise
+    ? U.filterTime(preciseReady ? M.time : EMPTY_TIME, filters) : U.filterDaily(M.daily, filters), [filters, M.time, M.daily, preciseReady]);
   const filtered = useMemo(() => {
     const effective = { ...filters };
     if (focusedSource) effective.sources = new Set([focusedSource]);
-    return filters.precise && M.time.length
-      ? U.filterTime(M.time, effective)
+    return filters.precise
+      ? U.filterTime(preciseReady ? M.time : EMPTY_TIME, effective)
       : U.filterDaily(M.daily, effective);
-  }, [filters, focusedSource, M.daily, M.time]);
+  }, [filters, focusedSource, M.daily, M.time, preciseReady]);
 
   const filteredHourly = useMemo(() => {
     const effective = { ...filters };
@@ -288,7 +306,8 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   // ───── Comparison period ─────
   const compareData = useMemo(() => {
     if (!filters.compare) return { rows: null, dates: null, totals: null };
-    if (filters.precise && M.time.length) {
+    const scoped = { ...filters, ...(focusedSource ? { sources: new Set([focusedSource]) } : {}) };
+    if (filters.precise) {
       const startMs = new Date(filters.startDateTime).getTime();
       const endMs = new Date(filters.endDateTime).getTime();
       if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
@@ -299,7 +318,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       const prevStart = new Date(prevEnd.getTime() - span);
       const startDateTime = U.toDateTimeLocalValue(prevStart);
       const endDateTime = U.toDateTimeLocalValue(prevEnd);
-      const rows = U.filterTime(M.time, { ...filters, startDateTime, endDateTime });
+      const rows = U.filterTime(preciseReady ? M.time : EMPTY_TIME, { ...scoped, startDateTime, endDateTime });
       return {
         rows,
         dates: U.rangeDates(startDateTime.slice(0, 10), endDateTime.slice(0, 10)),
@@ -309,10 +328,10 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
     const days = dates.length;
     const endStr = U.addDays(filters.startDate, -1);
     const startStr = U.addDays(endStr, -(days - 1));
-    const rows  = U.filterDaily(M.daily, { ...filters, startDate: startStr, endDate: endStr });
+    const rows  = U.filterDaily(M.daily, { ...scoped, startDate: startStr, endDate: endStr });
     const cDates = U.rangeDates(startStr, endStr);
     return { rows, dates: cDates, totals: U.aggregateTotals(rows) };
-  }, [filters, dates.length, M.daily, M.time]);
+  }, [filters, focusedSource, dates.length, M.daily, M.time, preciseReady]);
 
   // ───── Sparklines ─────
   const dailyTotalsByDay = useMemo(() => {
@@ -342,13 +361,12 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       .map(d => ((read.get(d) || 0) / tot.get(d)) * 100);
   }, [filtered, dates]);
 
-  // ───── Sessions filtered ─────
-  const filteredSessions = useMemo(() => {
-    return M.sessions.filter(s =>
-      (filters.sources.size === 0 || filters.sources.has(s.source)) &&
-      (filters.devices.size === 0 || filters.devices.has(s.device))
-    ).sort((a, b) => b.totalTokens - a.totalTokens);
-  }, [filters.sources, filters.devices, M.sessions]);
+  const filteredProjectRows = useMemo(() => {
+    const effective = { ...filters, ...(focusedSource ? { sources: new Set([focusedSource]) } : {}) };
+    return filters.precise ? U.filterTime(preciseReady ? M.time : EMPTY_TIME, effective)
+      : U.filterDaily(M.projectDaily || EMPTY_TIME, effective);
+  }, [filters, focusedSource, M.projectDaily, M.time, preciseReady]);
+  const filteredSessions = useMemo(() => projectTotals(filteredProjectRows), [filteredProjectRows]);
 
   const filteredRuns = useMemo(() => {
     return M.runs.filter(r =>
@@ -416,6 +434,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         availableRange={availableRange}
         onExport={onExportAll}
         onExportTrend={onExportTrend}
+        exportDisabled={filters.precise && !preciseReady}
         quota={quota} />
 
       {focusedSource && (
@@ -437,6 +456,15 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         </div>
       )}
 
+      {filters.precise && !preciseReady ? (
+        <div className="panel" role={M.timeState.error ? 'alert' : 'status'} style={{ padding: 24 }}>
+          {!preciseRange ? '请选择有效的时间范围' : M.timeState.error ? `精确明细加载失败：${M.timeState.error}` : '正在加载所选时间范围的明细…'}
+          {preciseRange && M.timeState.error && <button className="btn" onClick={() => onNeedTime(preciseRange, { force: true })}>重试明细</button>}
+        </div>
+      ) : <>
+      {filters.precise && <p className="muted" role="note">精确时间模式仅统计已采集的事件明细；没有事件记录的来源和历史区间不包含在内。</p>}
+      {!filters.precise && filtered.some(r => r.reconciliation && r.reconciliation !== 'matched') &&
+        <p className="muted" role="note">部分历史汇总缺少明细或费用口径不同，已有金额已保留。项目费用按可用事件明细统计；详见帮助。</p>}
       {/* KPI row */}
       <div className="kpi-row">
         <KPI label="总 Token" value={U.compactCN(totals.totalTokens)}
@@ -524,8 +552,9 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       </div>
 
       <AnimatePresence>
-        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={filtered} rangeLabel={filters.precise ? `${filters.startDateTime} ~ ${filters.endDateTime}` : `${filters.startDate} ~ ${filters.endDate}`} onClose={() => setDrill(null)} />}
+        {drill && <DrillDrawer key="usage-detail" drill={drill} daily={drill.kind === 'session' ? filteredProjectRows : filtered} rangeLabel={filters.precise ? `${filters.startDateTime} ~ ${filters.endDateTime}` : `${filters.startDate} ~ ${filters.endDate}`} onClose={() => setDrill(null)} />}
       </AnimatePresence>
+      </>}
     </div>
   );
 }

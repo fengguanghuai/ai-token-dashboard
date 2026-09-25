@@ -1,17 +1,21 @@
 import './load-env.mjs';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync, realpathSync } from 'node:fs';
+import { pipeline } from 'node:stream';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import {
-  apiRowIdExpression, deleteTimeUsageForSource, hourExpression, openDb,
+  dateExpression, hourExpression, openDb,
   pruneCollectionRuns, recordRun
 } from './db.mjs';
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage } from './db-batch.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
-import { calculateCacheSavings, loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs';
+import { loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs';
 import { queryQuota } from './quota.mjs';
+import { authorize, isLoopback, serverAccess, trustedRequest } from './http-security.mjs';
+import { validateIngest } from './ingest-validation.mjs';
+import { queryDaily, queryTime } from './usage-query.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
 // (to the vendors' usage endpoints, using the OAuth token the CLIs stored
@@ -23,6 +27,7 @@ const QUOTA_ERROR_TTL_MS = 10_000; // but recover quickly after a transient erro
 let quotaCache = { until: 0, data: null };
 
 const port = Number(process.env.PORT || 4173);
+const access = serverAccess();
 const staticDir = existsSync(resolve(process.cwd(), 'dist'))
   ? resolve(process.cwd(), 'dist')
   : resolve(process.cwd(), 'public');
@@ -51,7 +56,9 @@ const server = createServer((req, res) => {
 });
 
 async function handleRequest(req, res) {
+  if (!trustedRequest(req, access)) { sendJson(res, { error: 'Untrusted request origin' }, 403); return; }
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (!authorize(req, res, access, url.pathname === '/api/ingest')) return;
   if (url.pathname.startsWith('/api/')) {
     await handleApi(req, url, res);
     return;
@@ -59,28 +66,13 @@ async function handleRequest(req, res) {
   serveStatic(url.pathname, res);
 }
 
-server.listen(port, () => {
+server.listen(port, access.host, () => {
   console.log(`AI Token Dashboard: http://localhost:${port}`);
   startScheduledCollect();
 });
 
 async function handleApi(req, url, res) {
   if (url.pathname === '/api/data') {
-    const rawSessions = await all(`
-      SELECT device, source,
-        session_id AS ${as('sessionId')},
-        last_activity AS ${as('lastActivity')},
-        project_path AS ${as('projectPath')},
-        input_tokens AS ${as('inputTokens')},
-        output_tokens AS ${as('outputTokens')},
-        cache_creation_tokens AS ${as('cacheCreationTokens')},
-        cache_read_tokens AS ${as('cacheReadTokens')},
-        reasoning_output_tokens AS ${as('reasoningOutputTokens')},
-        total_tokens AS ${as('totalTokens')},
-        cost_usd AS ${as('costUSD')}
-      FROM session_usage
-      ORDER BY total_tokens DESC
-    `);
     const rawRuns = await all(`
       SELECT id, device, source, status, message,
         collected_at AS ${as('collectedAt')}
@@ -88,64 +80,20 @@ async function handleApi(req, url, res) {
       ORDER BY id DESC
       LIMIT 500
     `);
-    // Normalize sessions
-    const sessions = rawSessions.map(s => ({
-      ...s,
-      lastActivity: s.lastActivity ? s.lastActivity.slice(0, 10) : null,
-      projectPath: (s.projectPath && s.projectPath !== 'Unknown Project')
-        ? s.projectPath
-        : (s.sessionId ? s.sessionId.split('/').slice(-1)[0] || s.sessionId : null)
-    }));
-
-    // Build (device, source) -> projectPath map for enriching daily rows
-    // Use the project with the most tokens for each (device, source) pair
-    const projMap = new Map();
-    for (const s of rawSessions) {
-      const proj = (s.projectPath && s.projectPath !== 'Unknown Project')
-        ? s.projectPath
-        : (s.sessionId ? s.sessionId.split('/').slice(-1)[0] || s.sessionId : null);
-      if (!proj) continue;
-      const key = `${s.device}::${s.source}`;
-      const cur = projMap.get(key);
-      if (!cur || s.totalTokens > cur.tokens) {
-        projMap.set(key, { project: proj, tokens: s.totalTokens });
-      }
-    }
-
-    const dailyId = apiRowIdExpression(db.driver, ['device', 'source', 'usage_date', 'model']);
-    const rawDaily = await all(`
-      SELECT ${dailyId} AS id, device, source,
-        usage_date AS ${as('usageDate')}, model,
-        input_tokens AS ${as('inputTokens')},
-        output_tokens AS ${as('outputTokens')},
-        cache_creation_tokens AS ${as('cacheCreationTokens')},
-        cache_read_tokens AS ${as('cacheReadTokens')},
-        reasoning_output_tokens AS ${as('reasoningOutputTokens')},
-        total_tokens AS ${as('totalTokens')},
-        cost_usd AS ${as('costUSD')}
-      FROM daily_usage
-      ORDER BY usage_date DESC
-    `);
+    let usage;
+    try { usage = await queryDaily(db, url.searchParams, pricingData); }
+    catch (error) { sendJson(res, { error: error.message }, 400); return; }
+    const rawDaily = usage.daily;
 
     sendJson(res, {
-      // Enrich daily rows with projectPath from session data
+      eventRange: await db.get(`SELECT MIN(event_time) AS ${as('start')}, MAX(event_time) AS ${as('end')} FROM time_usage`),
       pricing: {
         primarySnapshotAt: pricingSnapshotTime(),
         models: Object.fromEntries([...new Set(rawDaily.map(d => d.model))]
           .map(model => [model, hasModelPricing(model, pricingData)]))
       },
-      daily: rawDaily.map(d => ({
-        ...d,
-        projectPath: projMap.get(`${d.device}::${d.source}`)?.project || null,
-        cacheSavedUSD: calculateCacheSavings(d.model, {
-          input: d.inputTokens,
-          output: d.outputTokens,
-          cacheRead: d.cacheReadTokens,
-          cacheWrite: d.cacheCreationTokens,
-          reasoning: /^Codex CLI(?: \(JS\))?$/.test(d.source) ? 0 : d.reasoningOutputTokens
-        }, pricingData, null, { tiered: false })
-      })),
-      sessions,
+      ...usage,
+      sessions: [], // Legacy lifetime workspace totals are not dated sessions.
       // Normalize runs: strip newlines from messages, shorten device names
       runs: rawRuns.map(r => ({
         ...r,
@@ -156,28 +104,8 @@ async function handleApi(req, url, res) {
     return;
   }
   if (url.pathname === '/api/time') {
-    // Per-event rows are only needed for the precise (datetime) view, so the
-    // client loads them lazily instead of shipping the whole table on first paint.
-    const timeId = apiRowIdExpression(db.driver, ['device', 'source', 'event_key']);
-    sendJson(res, {
-      time: await all(`
-        SELECT ${timeId} AS id, device, source,
-          event_time AS ${as('eventTime')},
-          usage_date AS ${as('usageDate')},
-          model,
-          project_path AS ${as('projectPath')},
-          session_id AS ${as('sessionId')},
-          input_tokens AS ${as('inputTokens')},
-          output_tokens AS ${as('outputTokens')},
-          cache_creation_tokens AS ${as('cacheCreationTokens')},
-          cache_read_tokens AS ${as('cacheReadTokens')},
-          reasoning_output_tokens AS ${as('reasoningOutputTokens')},
-          total_tokens AS ${as('totalTokens')},
-          cost_usd AS ${as('costUSD')}
-        FROM time_usage
-        ORDER BY event_time DESC
-      `)
-    });
+    try { sendJson(res, await queryTime(db, url.searchParams, pricingData)); }
+    catch (error) { sendJson(res, { error: error.message }, 400); }
     return;
   }
   if (url.pathname === '/api/hourly') {
@@ -185,18 +113,19 @@ async function handleApi(req, url, res) {
     // dimensions in the result lets the client apply the same source/device/
     // model filters without downloading the much larger per-event dataset.
     const localHour = hourExpression(db.driver);
+    const localDate = dateExpression(db.driver);
     sendJson(res, {
       hourly: await all(`
         SELECT device, source,
-          usage_date AS ${as('usageDate')},
+          ${localDate} AS ${as('usageDate')},
           ${localHour} AS hour,
           model,
           COUNT(*) AS ${as('eventCount')},
           SUM(total_tokens) AS ${as('totalTokens')},
           SUM(cost_usd) AS ${as('costUSD')}
         FROM time_usage
-        GROUP BY device, source, usage_date, hour, model
-        ORDER BY usage_date DESC, hour DESC
+        GROUP BY device, source, ${localDate}, ${localHour}, model
+        ORDER BY ${as('usageDate')} DESC, hour DESC
       `)
     });
     return;
@@ -367,36 +296,35 @@ async function handleQuota(res) {
 }
 
 async function handleIngest(req, res) {
-  const expectedToken = process.env.INGEST_TOKEN;
-  if (expectedToken) {
-    const actualToken = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-    if (actualToken !== expectedToken) {
-      sendJson(res, { error: 'Unauthorized' }, 401);
-      return;
-    }
+  if (!/^application\/json(?:;|$)/i.test(req.headers['content-type'] || '')) {
+    sendJson(res, { error: 'Content-Type must be application/json' }, 415); return;
   }
 
   try {
-    const payload = await readJson(req);
+    const payload = validateIngest(await readJson(req));
     const dailyRows = Array.isArray(payload.daily) ? payload.daily : [];
     const timeRows = Array.isArray(payload.time) ? payload.time : [];
     const sessionRows = Array.isArray(payload.sessions) ? payload.sessions : [];
     const runRows = Array.isArray(payload.runs) ? payload.runs : [];
 
-    const fullRebuild = payload.mode !== 'incremental';
+    const fullRebuild = payload.mode === 'full';
 
     // 全量 push 携带设备完整时间窗,按 (device, source) 整体替换;
     // 增量 push 只含新事件,只做 upsert,绝不删表。
     const timePairs = new Map();
     if (fullRebuild) {
-      for (const row of timeRows) {
+      for (const row of payload.scopes) {
         if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
       }
     }
 
     await db.transaction(async (tx) => {
+      for (const row of timePairs.values()) {
+        for (const table of ['daily_usage', 'time_usage', 'session_usage']) {
+          await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [row.device, row.source]);
+        }
+      }
       await batchUpsertDaily(tx, dailyRows);
-      for (const row of timePairs.values()) await deleteTimeUsageForSource(tx, row.device, row.source);
       await batchUpsertTimeUsage(tx, timeRows);
       await batchUpsertSession(tx, sessionRows);
       for (const row of runRows) await recordRun(tx, row);
@@ -429,8 +357,14 @@ function serveStatic(pathname, res) {
     res.end('Not found');
     return;
   }
-  res.writeHead(200, { 'content-type': contentType(filePath) });
-  createReadStream(filePath).pipe(res);
+  try {
+    const realPath = realpathSync(filePath);
+    if (!statSync(realPath).isFile() || !realPath.startsWith(realpathSync(staticDir) + sep)) {
+      res.writeHead(404); res.end('Not found'); return;
+    }
+  } catch { res.writeHead(404); res.end('Not found'); return; }
+  res.writeHead(200, { 'content-type': contentType(filePath), 'x-content-type-options': 'nosniff' });
+  pipeline(createReadStream(filePath), res, () => { /* handles disconnects and read errors */ });
 }
 
 function all(sql, params) {
@@ -438,20 +372,13 @@ function all(sql, params) {
 }
 
 function sendJson(res, value, status = 200) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(value));
 }
 
 function trimOutput(value) {
   const text = String(value || '').trim();
   return text.length > 12000 ? `${text.slice(-12000)}` : text;
-}
-
-function isLoopback(address = '') {
-  return address === '127.0.0.1'
-    || address === '::1'
-    || address === '::ffff:127.0.0.1'
-    || address === 'localhost';
 }
 
 function readJson(req) {

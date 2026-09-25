@@ -171,7 +171,7 @@ export async function collect(pricingData = null) {
   const workspaces = new Map();
   const events = [];
   const seen = new Set();
-  const cutoff = Date.now() - Number(process.env.TIME_USAGE_HISTORY_DAYS || 90) * 86400000;
+  const cutoff = Date.now() - Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity) * 86400000;
   for (const [filePath, session] of sessions) {
     const inherited = new Set(ancestors(filePath, sessions).flatMap(parent =>
       parent.events.filter(event => session.createdAt !== null && event.time <= session.createdAt)
@@ -198,7 +198,7 @@ export async function collect(pricingData = null) {
       if (time >= cutoff) events.push({
         client: CLIENT_KEY, eventKey, eventTime: new Date(time).toISOString(), usageDate: date,
         sessionId: session.sessionId, workspaceKey: workspace, workspaceLabel: workspace,
-        model, provider, tokens, cost
+        model, provider, tokens, cost, costBasis: record.recordedCost != null ? 'recorded' : undefined
       });
     }
   }

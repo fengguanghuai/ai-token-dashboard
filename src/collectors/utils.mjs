@@ -1,8 +1,5 @@
+import { zonedParts } from '../timezone.mjs';
 const REASONING_TIERS = new Set(['minimal', 'low', 'medium', 'high', 'xhigh', 'auto', 'none']);
-
-function pad2(value) {
-  return String(value).padStart(2, '0');
-}
 
 export function localDateFromTimestamp(value, fallback = 'unknown') {
   if (value == null || value === '') return fallback;
@@ -18,11 +15,7 @@ export function localDateFromTimestamp(value, fallback = 'unknown') {
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return fallback;
 
-  return [
-    date.getFullYear(),
-    pad2(date.getMonth() + 1),
-    pad2(date.getDate())
-  ].join('-');
+  return zonedParts(date)?.date || fallback;
 }
 
 export function normalizeModelForGrouping(modelId) {

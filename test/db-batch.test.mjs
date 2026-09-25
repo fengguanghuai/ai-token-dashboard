@@ -60,14 +60,14 @@ function dailyRow(overrides = {}) {
   };
 }
 
-test('batchUpsertDaily keeps historical cost locked but updates tokens', async () => {
+test('batchUpsertDaily writes reconciled historical costs and tokens together', async () => {
   const { path, cleanup } = tmpDbPath();
   try {
     const db = await openDb(path);
     await batchUpsertDaily(db, [dailyRow()]); // 历史日期,首次写入
     await batchUpsertDaily(db, [dailyRow({ costUSD: 99, totalTokens: 20 })]);
     const row = await db.get('SELECT cost_usd, total_tokens, pricing_locked_at FROM daily_usage WHERE usage_date = ?', ['2026-01-01']);
-    assert.equal(row.cost_usd, 1, 'historical cost must stay locked');
+    assert.equal(row.cost_usd, 99, 'the storage layer must accept reconciled costs');
     assert.equal(row.total_tokens, 20, 'tokens still update');
     assert.ok(row.pricing_locked_at, 'lock timestamp set for historical dates');
     await db.close();

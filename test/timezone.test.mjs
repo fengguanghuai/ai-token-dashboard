@@ -41,9 +41,9 @@ test('hourExpression buckets by the given display timezone on postgres', () => {
   assert.doesNotMatch(sql, /CURRENT_SETTING/);
 });
 
-test('hourExpression uses localtime on sqlite (machine zone)', () => {
+test('hourExpression uses the requested timezone on SQLite', () => {
   const sql = hourExpression('sqlite', 'event_time', 'Asia/Shanghai');
-  assert.match(sql, /strftime\('%H', event_time, 'localtime'\)/);
+  assert.match(sql, /display_hour\(event_time, 'Asia\/Shanghai'\)/);
 });
 
 test('todayExpression buckets the price-lock boundary by the display timezone on postgres', () => {

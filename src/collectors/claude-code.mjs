@@ -18,7 +18,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 export const CLIENT_KEY = 'claude';
 export const SOURCE_LABEL = 'Claude Code';
 const CACHE_VERSION = 2;   // bump when parseSessionFile output shape changes
-const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------

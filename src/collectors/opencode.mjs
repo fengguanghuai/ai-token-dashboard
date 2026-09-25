@@ -19,7 +19,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 export const CLIENT_KEY = 'opencode';
 export const SOURCE_LABEL = 'OpenCode';
 const CACHE_VERSION = 2;   // bump when parsed message shape changes
-const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 function opencodeDataDir() {
