@@ -182,7 +182,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
   const TABS = [
     { id: 'sources', label: '来源 / 设备', count: bySource.length },
     { id: 'models',  label: '模型',        count: byModel.length },
-    { id: 'sessions', label: '项目 / 会话', count: sessions.length },
+    { id: 'sessions', label: '项目', count: sessions.length },
     { id: 'runs',    label: '采集记录',    count: runs.length }
   ];
 
@@ -245,8 +245,9 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
         : (r.sessionId ? r.sessionId.split('/').slice(-1)[0] || r.sessionId : '—');
       return <span className="mono" title={r.sessionId || ''}>{label}</span>;
     }},
+    { field: 'model', title: '模型', render: r => <span className="mono">{r.model}</span> },
     { field: 'lastActivity', title: '最后活动', render: r => (
-      <span className="muted" style={{fontSize:11.5}}>{r.lastActivity}</span>
+      <span className="muted" style={{fontSize:11.5}}>{r.lastActivity ? U.formatTs(r.lastActivity) : '未知'}</span>
     ), width: 130 },
     { field: 'inputTokens', title: 'Input', hozAlign: 'right', render: r => U.compact(r.inputTokens), width: 90 },
     { field: 'outputTokens', title: 'Output', hozAlign: 'right', render: r => U.compact(r.outputTokens), width: 90 },
@@ -284,7 +285,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
   let columns, rows, initialSort, emptyText;
   if (tab === 'sources')  { columns = sourceColumns;  rows = bySource;  initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '当前筛选下无来源'; }
   if (tab === 'models')   { columns = modelColumns;   rows = byModel;   initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '当前筛选下无模型'; }
-  if (tab === 'sessions') { columns = sessionColumns; rows = sessions;  initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '暂无会话数据'; }
+  if (tab === 'sessions') { columns = sessionColumns; rows = sessions;  initialSort = { field: 'totalTokens', dir: 'desc' }; emptyText = '当前范围没有可归属项目的事件明细'; }
   if (tab === 'runs')     { columns = runColumns;     rows = showHistory ? runs : latest; initialSort = { field: 'collectedAt', dir: 'desc' }; emptyText = '暂无采集记录'; }
 
   const exportCSV = () => {
@@ -293,7 +294,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
 
   return (
     <div className={`panel table-panel ${tab === 'runs' ? 'table-panel-runs' : ''}`}>
-      <div className="table-heading"><div><h2 className="panel-title">用量明细</h2><p className="panel-sub">按来源、模型或会话核对记录</p></div><span>点击行查看详情</span></div>
+      <div className="table-heading"><div><h2 className="panel-title">用量明细</h2><p className="panel-sub">按来源、模型或项目核对记录</p></div><span>点击行查看详情</span></div>
       <div className="panel-header" style={{marginBottom: 14}}>
         <div className="panel-tabs">
           {TABS.map(t => (
@@ -369,7 +370,7 @@ function DrillDrawer({ drill, daily, rangeLabel, onClose }) {
     if (kind === 'source') { title = row.source; sub = row.device; filterFn = r => r.source === row.source && r.device === row.device; }
     if (kind === 'model')  { title = row.model; sub = drill.allSources ? '当前筛选内的所有来源' : row.source; filterFn = r => (drill.allSources || r.source === row.source) && r.model === row.model; }
     if (kind === 'session'){ title = row.projectPath || row.sessionId; sub = `${row.source} · ${row.device}`;
-      filterFn = r => r.source === row.source; /* session doesn't tie to daily directly — show source's daily */ }
+      filterFn = r => r.source === row.source && r.device === row.device && r.projectPath === row.projectPath && r.model === row.model; }
     if (kind === 'run')    { title = `采集: ${row.source}`; sub = U.formatTs(row.collectedAt); filterFn = () => false; }
 
     const matching = daily.filter(filterFn);

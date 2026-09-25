@@ -71,6 +71,7 @@ function ReviewDashboard({ rawData }) {
     : null, [period]);
 
   const daily = useMemo(() => RU.filterByPeriod(rawData.daily, period), [rawData, period]);
+  const projectDaily = useMemo(() => RU.filterByPeriod(rawData.projectDaily || [], period).filter(row => row.projectPath), [rawData, period]);
   const prevDaily = useMemo(() =>
     prevPeriod ? RU.filterByPeriod(rawData.daily, prevPeriod) : []
   , [rawData, prevPeriod]);
@@ -101,7 +102,7 @@ function ReviewDashboard({ rawData }) {
     const active = days.filter(d => d.total > 0);
     const peak = active.length ? [...active].sort((a, b) => b.total - a.total)[0] : null;
     const tools = RU.aggregateBy(daily, 'source').sort((a, b) => b.totalTokens - a.totalTokens);
-    const projects = RU.aggregateBy(daily, 'projectPath').filter(p => p.key);
+    const projects = RU.aggregateBy(projectDaily, 'projectPath').filter(p => p.key);
     const topTool = tools[0];
     return {
       activeDays: active.length,
@@ -116,7 +117,7 @@ function ReviewDashboard({ rawData }) {
       } : null,
       avgDailyCost: active.length ? totals.cost / active.length : 0
     };
-  }, [daily, period, totals]);
+  }, [daily, projectDaily, period, totals]);
 
   // Insights
   const insights = useMemo(() =>
@@ -182,11 +183,13 @@ function ReviewDashboard({ rawData }) {
       </nav>
 
       <div className="page">
+        {daily.some(r => r.reconciliation && r.reconciliation !== 'matched') && <p className="section-sub" role="note">部分历史汇总与事件明细尚未核对一致。已有费用已保留，不能按当前价格快照解释为当时账单。</p>}
         <HeroSection period={period} totals={totals} prevTotals={prevTotals} stats={heroStats}/>
       </div>
 
       <div className="page">
-        <ProjectSection daily={daily} totalTokens={totals.total}/>
+        <p className="section-sub">项目归属来自事件明细。{U.compactCN(Math.max(0, totals.total - RU.sumField(projectDaily, 'totalTokens')))} Token 暂无可核对的项目归属；项目费用可能与保留的历史汇总金额不同。</p>
+        <ProjectSection daily={projectDaily} totalTokens={totals.total}/>
       </div>
 
       <div className="page-wide">

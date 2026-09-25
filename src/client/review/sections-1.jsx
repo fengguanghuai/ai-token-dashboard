@@ -144,7 +144,7 @@ function ProjectSection({ daily, totalTokens }) {
               </div>
               <div className="proj-val">
                 <div className="big">{U.compactCN(p.totalTokens)}</div>
-                <div className="small">{p.costUSD > 0 ? U.fmtUS.format(p.costUSD) : '免费'}</div>
+                <div className="small">{p.costUSD > 0 ? U.fmtUS.format(p.costUSD) : '未记录费用'}</div>
               </div>
             </div>
           );
