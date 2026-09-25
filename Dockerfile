@@ -11,7 +11,7 @@ COPY data/pricing-litellm.json data/pricing-openrouter.json ./data/
 COPY index.html vite.config.js ./
 RUN npm run build && npm prune --omit=dev
 
-ENV PORT=4173
+ENV PORT=4173 HOST=0.0.0.0
 EXPOSE 4173
 
 CMD ["node", "src/server.mjs"]

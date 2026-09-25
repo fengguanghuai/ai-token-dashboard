@@ -23,7 +23,7 @@ const tableConfigs = [
     columns: [
       'device', 'source', 'usage_date', 'model', 'input_tokens', 'output_tokens',
       'cache_creation_tokens', 'cache_read_tokens', 'reasoning_output_tokens',
-      'total_tokens', 'cost_usd', 'pricing_locked_at', 'updated_at'
+      'total_tokens', 'cost_usd', 'cost_basis', 'pricing_version', 'pricing_locked_at', 'updated_at'
     ]
   },
   {
@@ -42,7 +42,7 @@ const tableConfigs = [
       'device', 'source', 'event_key', 'event_time', 'usage_date', 'model',
       'project_path', 'session_id', 'input_tokens', 'output_tokens',
       'cache_creation_tokens', 'cache_read_tokens', 'reasoning_output_tokens',
-      'total_tokens', 'cost_usd', 'updated_at'
+      'total_tokens', 'cost_usd', 'cost_basis', 'pricing_version', 'updated_at'
     ]
   }
 ];
@@ -136,6 +136,8 @@ function readSourceRows(db, config) {
   const available = new Set(db.prepare(`PRAGMA table_info(${config.table})`).all().map(column => column.name));
   const selections = config.columns.map((column) => {
     if (available.has(column)) return column;
+    if (column === 'cost_basis') return "'legacy_unknown' AS cost_basis";
+    if (column === 'pricing_version') return 'NULL AS pricing_version';
     if (column === 'pricing_locked_at') return 'NULL AS pricing_locked_at';
     if (column === 'updated_at') return `datetime('now') AS updated_at`;
     throw new Error(`SQLite source is missing required column ${config.table}.${column}`);

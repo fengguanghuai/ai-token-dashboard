@@ -36,7 +36,7 @@ import { cachedParse, flushCache } from './parse-cache.mjs';
 export const CLIENT_KEY = 'dsh';
 export const SOURCE_LABEL = 'DeepSeek Harness';
 const CACHE_VERSION = 2;   // bump when parseSessionFile behavior or output changes
-const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || 90);
+const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
 const ZSTD_MAGIC = Buffer.from([0x28, 0xB5, 0x2F, 0xFD]);

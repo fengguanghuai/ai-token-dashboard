@@ -10,6 +10,7 @@
     "seed:demo": "node scripts/seed-demo.mjs",
     "db:check": "node src/db-check.mjs",
     "db:migrate": "node src/db-migrate.mjs",
+    "db:restore": "node src/restore-usage.mjs",
     "dev": "node src/dev.mjs",
     "dev:client": "vite --host 127.0.0.1 --port 5173",
     "dev:server": "node src/server.mjs",
@@ -19,7 +20,7 @@
     "test": "node --test"
   },
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.15.0"
   },
   "dependencies": {
     "@number-flow/react": "0.6.2",

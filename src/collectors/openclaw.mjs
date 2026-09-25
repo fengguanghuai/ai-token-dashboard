@@ -428,9 +428,9 @@ export async function collect(pricingData = null) {
       const calculatedCost = calculateCost(model, tokens, pricingData, provider);
       const effectiveCost = cost ?? calculatedCost;
       const ms = typeof timestamp === 'number' ? (timestamp < 1e12 ? timestamp * 1000 : timestamp) : Date.parse(timestamp);
-      if (Number.isFinite(ms) && ms >= Date.now() - Number(process.env.TIME_USAGE_HISTORY_DAYS || 90) * 86400000) {
+      if (Number.isFinite(ms) && ms >= Date.now() - Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity) * 86400000) {
         timeEvents.push({ client: CLIENT_KEY, eventKey, eventTime: new Date(ms).toISOString(), usageDate: date,
-          sessionId, workspaceKey: agentPath, workspaceLabel: agentPath, model, provider, tokens, cost: effectiveCost });
+          sessionId, workspaceKey: agentPath, workspaceLabel: agentPath, model, provider, tokens, cost: effectiveCost, costBasis: cost != null ? 'recorded' : undefined });
       }
 
       // Daily

@@ -1,165 +1,58 @@
-import { mysqlRowKey, nowExpression, todayExpression } from './db.mjs';
+import { mysqlRowKey, nowExpression } from './db.mjs';
+import { zonedParts } from './timezone.mjs';
 
-// SQLite 默认变量上限为 32766,但保守起见每批 400 行(400 × 16 参数 = 6400)。
-const CHUNK_SIZE = 400;
+export const tokenFields = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'reasoningOutputTokens', 'totalTokens'];
+const tokenColumns = ['input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens', 'reasoning_output_tokens', 'total_tokens'];
+const usage = tokenFields.map((key, i) => [tokenColumns[i], key, 0]);
+const cost = [['cost_usd', 'costUSD', 0], ['cost_basis', 'costBasis', 'legacy_unknown'], ['pricing_version', 'pricingVersion', null]];
+export const TABLES = {
+  daily: { table: 'daily_usage', keys: ['device', 'source', 'usage_date', 'model'], fields: [
+    ['device', 'device'], ['source', 'source'], ['usage_date', 'usageDate'], ['model', 'model', ''],
+    ...usage, ...cost, ['pricing_locked_at', 'pricingLockedAt', null]
+  ] },
+  time: { table: 'time_usage', keys: ['device', 'source', 'event_key'], fields: [
+    ['device', 'device'], ['source', 'source'], ['event_key', 'eventKey'], ['event_time', 'eventTime'],
+    ['usage_date', 'usageDate'], ['model', 'model', ''], ['project_path', 'projectPath', null], ['session_id', 'sessionId', null], ...usage, ...cost
+  ] },
+  sessions: { table: 'session_usage', keys: ['device', 'source', 'session_id'], fields: [
+    ['device', 'device'], ['source', 'source'], ['session_id', 'sessionId'], ['last_activity', 'lastActivity', null],
+    ['project_path', 'projectPath', null], ...usage, ['cost_usd', 'costUSD', 0]
+  ] }
+};
 
-function chunks(rows, size = CHUNK_SIZE) {
-  const out = [];
-  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
-  return out;
+export function fromStored(kind, row) {
+  return Object.fromEntries(TABLES[kind].fields.map(([column, key, fallback]) => [key, row[column] ?? fallback]));
+}
+
+async function batchUpsert(db, kind, rows) {
+  const { table, keys, fields } = TABLES[kind];
+  const columns = fields.map(([column]) => column);
+  const mutable = columns.filter(column => !keys.includes(column));
+  const mysql = db.driver === 'mysql';
+  for (let start = 0; start < rows.length; start += 400) {
+    const part = rows.slice(start, start + 400);
+    const names = [...(mysql ? ['row_key'] : []), ...columns, 'updated_at'];
+    const group = `(${Array(names.length - 1).fill('?').join(', ')}, ${nowExpression(db.driver)})`;
+    const update = mutable.map(column => `${column} = ${mysql ? `VALUES(${column})` : `excluded.${column}`}`);
+    update.push(`updated_at = ${nowExpression(db.driver)}`);
+    await db.run(`INSERT INTO ${table} (${names.join(', ')}) VALUES ${part.map(() => group).join(', ')}
+      ${mysql ? 'ON DUPLICATE KEY UPDATE' : `ON CONFLICT(${keys.join(', ')}) DO UPDATE SET`} ${update.join(', ')}`,
+    part.flatMap(row => {
+      const values = fields.map(([, key, fallback]) => row[key] ?? fallback);
+      if (!mysql) return values;
+      return [mysqlRowKey(...keys.map(key => values[columns.indexOf(key)])), ...values];
+    }));
+  }
 }
 
 export async function getTimeWatermark(db, device, source) {
-  const row = await db.get(
-    'SELECT MAX(event_time) AS watermark FROM time_usage WHERE device = ? AND source = ?',
-    [device, source]
-  );
-  return row?.watermark || null;
+  return (await db.get('SELECT MAX(event_time) AS watermark FROM time_usage WHERE device = ? AND source = ?', [device, source]))?.watermark || null;
 }
 
-const TIME_COLUMNS = `
-  device, source, event_key, event_time, usage_date, model, project_path, session_id,
-  input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-  reasoning_output_tokens, total_tokens, cost_usd, updated_at
-`;
-
-function timeValues(row) {
-  return [
-    row.device, row.source, row.eventKey, row.eventTime, row.usageDate, row.model || '',
-    row.projectPath || null, row.sessionId || null, row.inputTokens || 0,
-    row.outputTokens || 0, row.cacheCreationTokens || 0, row.cacheReadTokens || 0,
-    row.reasoningOutputTokens || 0, row.totalTokens || 0, row.costUSD || 0
-  ];
-}
-
-export async function batchUpsertTimeUsage(db, rows) {
-  const now = nowExpression(db.driver);
-  for (const part of chunks(rows)) {
-    if (db.driver === 'mysql') {
-      const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})`;
-      await db.run(`
-        INSERT INTO time_usage (row_key, ${TIME_COLUMNS})
-        VALUES ${part.map(() => group).join(', ')}
-        ON DUPLICATE KEY UPDATE
-          event_time = VALUES(event_time), usage_date = VALUES(usage_date), model = VALUES(model),
-          project_path = VALUES(project_path), session_id = VALUES(session_id),
-          input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-          cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-          reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-          cost_usd = VALUES(cost_usd), updated_at = ${now}
-      `, part.flatMap(row => [mysqlRowKey(row.device, row.source, row.eventKey), ...timeValues(row)]));
-      continue;
-    }
-    const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})`;
-    await db.run(`
-      INSERT INTO time_usage (${TIME_COLUMNS})
-      VALUES ${part.map(() => group).join(', ')}
-      ON CONFLICT(device, source, event_key) DO UPDATE SET
-        event_time = excluded.event_time, usage_date = excluded.usage_date, model = excluded.model,
-        project_path = excluded.project_path, session_id = excluded.session_id,
-        input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-        cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-        reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-        cost_usd = excluded.cost_usd, updated_at = ${now}
-    `, part.flatMap(timeValues));
-  }
-}
-
-const DAILY_COLUMNS = `
-  device, source, usage_date, model, input_tokens, output_tokens,
-  cache_creation_tokens, cache_read_tokens, reasoning_output_tokens,
-  total_tokens, cost_usd, pricing_locked_at, updated_at
-`;
-
-function dailyValues(row) {
-  return [
-    row.device, row.source, row.usageDate, row.model || '', row.inputTokens || 0,
-    row.outputTokens || 0, row.cacheCreationTokens || 0, row.cacheReadTokens || 0,
-    row.reasoningOutputTokens || 0, row.totalTokens || 0, row.costUSD || 0, row.usageDate
-  ];
-}
-
-export async function batchUpsertDaily(db, rows) {
-  const now = nowExpression(db.driver);
-  const today = todayExpression(db.driver);
-  for (const part of chunks(rows)) {
-    if (db.driver === 'mysql') {
-      const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, IF(? < ${today}, ${now}, NULL), ${now})`;
-      await db.run(`
-        INSERT INTO daily_usage (row_key, ${DAILY_COLUMNS})
-        VALUES ${part.map(() => group).join(', ')}
-        ON DUPLICATE KEY UPDATE
-          input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-          cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-          reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-          cost_usd = IF(daily_usage.usage_date < ${today}, daily_usage.cost_usd, VALUES(cost_usd)),
-          pricing_locked_at = IF(
-            daily_usage.usage_date < ${today}, COALESCE(daily_usage.pricing_locked_at, ${now}), NULL
-          ),
-          updated_at = ${now}
-      `, part.flatMap(row => [mysqlRowKey(row.device, row.source, row.usageDate, row.model || ''), ...dailyValues(row)]));
-      continue;
-    }
-    const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? < ${today} THEN ${now} ELSE NULL END, ${now})`;
-    await db.run(`
-      INSERT INTO daily_usage (${DAILY_COLUMNS})
-      VALUES ${part.map(() => group).join(', ')}
-      ON CONFLICT(device, source, usage_date, model) DO UPDATE SET
-        input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-        cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-        reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-        cost_usd = CASE WHEN daily_usage.usage_date < ${today} THEN daily_usage.cost_usd ELSE excluded.cost_usd END,
-        pricing_locked_at = CASE
-          WHEN daily_usage.usage_date < ${today} THEN COALESCE(daily_usage.pricing_locked_at, ${now})
-          ELSE NULL
-        END,
-        updated_at = ${now}
-    `, part.flatMap(dailyValues));
-  }
-}
-
-const SESSION_COLUMNS = `
-  device, source, session_id, last_activity, project_path, input_tokens,
-  output_tokens, cache_creation_tokens, cache_read_tokens,
-  reasoning_output_tokens, total_tokens, cost_usd, updated_at
-`;
-
-function sessionValues(row) {
-  return [
-    row.device, row.source, row.sessionId, row.lastActivity || null, row.projectPath || null,
-    row.inputTokens || 0, row.outputTokens || 0, row.cacheCreationTokens || 0,
-    row.cacheReadTokens || 0, row.reasoningOutputTokens || 0, row.totalTokens || 0,
-    row.costUSD || 0
-  ];
-}
-
-export async function batchUpsertSession(db, rows) {
-  const now = nowExpression(db.driver);
-  for (const part of chunks(rows)) {
-    if (db.driver === 'mysql') {
-      const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})`;
-      await db.run(`
-        INSERT INTO session_usage (row_key, ${SESSION_COLUMNS})
-        VALUES ${part.map(() => group).join(', ')}
-        ON DUPLICATE KEY UPDATE
-          last_activity = VALUES(last_activity), project_path = VALUES(project_path),
-          input_tokens = VALUES(input_tokens), output_tokens = VALUES(output_tokens),
-          cache_creation_tokens = VALUES(cache_creation_tokens), cache_read_tokens = VALUES(cache_read_tokens),
-          reasoning_output_tokens = VALUES(reasoning_output_tokens), total_tokens = VALUES(total_tokens),
-          cost_usd = VALUES(cost_usd), updated_at = ${now}
-      `, part.flatMap(row => [mysqlRowKey(row.device, row.source, row.sessionId), ...sessionValues(row)]));
-      continue;
-    }
-    const group = `(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${now})`;
-    await db.run(`
-      INSERT INTO session_usage (${SESSION_COLUMNS})
-      VALUES ${part.map(() => group).join(', ')}
-      ON CONFLICT(device, source, session_id) DO UPDATE SET
-        last_activity = excluded.last_activity, project_path = excluded.project_path,
-        input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
-        cache_creation_tokens = excluded.cache_creation_tokens, cache_read_tokens = excluded.cache_read_tokens,
-        reasoning_output_tokens = excluded.reasoning_output_tokens, total_tokens = excluded.total_tokens,
-        cost_usd = excluded.cost_usd, updated_at = ${now}
-    `, part.flatMap(sessionValues));
-  }
-}
+// These are storage primitives. Cost preservation and late-usage reconciliation
+// happen before the write, rather than freezing an entire historical day here.
+export const batchUpsertTimeUsage = (db, rows) => batchUpsert(db, 'time', rows);
+export const batchUpsertSession = (db, rows) => batchUpsert(db, 'sessions', rows);
+export const batchUpsertDaily = (db, rows) => batchUpsert(db, 'daily', rows.map(row => ({
+  ...row, pricingLockedAt: row.pricingLockedAt ?? (row.usageDate < zonedParts(Date.now()).date ? new Date().toISOString() : null)
+})));

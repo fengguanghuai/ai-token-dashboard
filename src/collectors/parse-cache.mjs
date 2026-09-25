@@ -19,6 +19,7 @@
 
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { resolveDisplayTz } from '../timezone.mjs';
 
 const CACHE_ROOT = process.env.AI_TOKEN_DASHBOARD_CACHE_DIR
   || resolve(process.cwd(), 'data', 'parse-cache');
@@ -34,6 +35,7 @@ function cachePathFor(namespace) {
 }
 
 async function getStore(namespace, version) {
+  version = `${version}:${resolveDisplayTz()}`;
   let store = stores.get(namespace);
   if (store && store.version === version) return store;
 
