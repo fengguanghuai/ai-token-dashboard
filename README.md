@@ -3,7 +3,7 @@
 [English](README.en.md) | **中文**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.5-green)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.15-green)](https://nodejs.org)
 
 一个轻量、隐私优先的本地 AI Token 用量看板，支持同时追踪多种 Agent 和 CLI 工具的使用情况。
 
@@ -62,7 +62,7 @@ Pi 读取 JSONL 中的 assistant 用量、显式 tool 用量及带 usage 的上�
 
 ## 环境要求
 
-- **Node.js ≥ 22.5.0**（SQLite 使用内置的 `node:sqlite` 模块）
+- **Node.js ≥ 22.15.0**（SQLite 使用内置的 `node:sqlite` 模块）
 
 ---
 
@@ -153,7 +153,7 @@ DB_PATH=data/demo.sqlite npm run serve
 **第一步：在中心设备启动 hub 服务：**
 
 ```bash
-INGEST_TOKEN="your-secret-token" npm run serve
+HOST=0.0.0.0 INGEST_TOKEN="your-secret-token" npm run serve
 ```
 
 **第二步：在每台使用 AI 工具的设备上，带 push 参数运行采集：**
@@ -165,7 +165,7 @@ npm run collect -- \
   --token "your-secret-token"
 ```
 
-hub 会将所有设备的每日记录和会话记录合并写入同一个 SQLite，并在 Web 页面统一展示。
+hub 会合并每日记录和事件明细。浏览器登录时用户名任意，密码为 `DASHBOARD_TOKEN`（未设置时使用 `INGEST_TOKEN`）；程序使用 Bearer token。跨公网部署请在反向代理上启用 HTTPS。首次推送包括本地数据库已有历史，之后按目标地址独立记录成功确认的内容，中断后可重试。
 
 ---
 
@@ -222,6 +222,7 @@ docker compose up -d
 
 | 环境变量 | 默认值 | 说明 |
 |---------|--------|------|
+| `HOST` | `127.0.0.1` | 监听地址；外部访问需设置 token，Docker 为 `0.0.0.0` |
 | `PORT` | `4173` | HTTP 服务端口 |
 | `API_PORT` | `4173` | `npm run dev` 中 API 服务端口 |
 | `DATABASE_URL` | _未设置_ | PostgreSQL/Supabase 或 MySQL 连接 URL；设置后优先于 SQLite |
@@ -229,8 +230,9 @@ docker compose up -d
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
 | `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL 连接池大小 |
 | `DB_CONNECT_TIMEOUT_MS` | `10000` | 远程数据库连接超时毫秒数 |
-| `DISPLAY_TZ` | 主机时区 | 热力图小时分布与每日价格锁定「今天」所用的展示时区（IANA 名称，如 `Asia/Shanghai`）。默认跟随运行服务器的本机时区；部署在 UTC 主机（如 Render/Docker）上时显式指定，否则热力图会按 UTC 显示 |
-| `INGEST_TOKEN` | _未设置_ | 设置后，`/api/ingest` 接口需要 `Authorization: Bearer <token>` |
+| `DISPLAY_TZ` | 主机时区 | 采集日期、热力图日期及小时所用的时区（IANA 名称，如 `Asia/Shanghai`）。默认跟随运行服务器的本机时区；部署在 UTC 主机（如 Render/Docker）上时显式指定，否则热力图会按 UTC 显示 |
+| `DASHBOARD_TOKEN` | _未设置_ | 看板及读取 API 的密码，未设置时复用 `INGEST_TOKEN` |
+| `INGEST_TOKEN` | _未设置_ | 推送鉴权；未设置时复用 `DASHBOARD_TOKEN`。两个都未设置时仅允许本机监听 |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | 是否启用服务内置定时采集 |
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | 定时采集间隔秒数，最低 10 秒 |
 | `SCHEDULED_COLLECT_RUN_ON_START` | `false` | 服务启动后是否立即采集一次 |
@@ -260,15 +262,22 @@ npm run pricing:update
 | `--db` | `/path/to/db` | 覆盖 SQLite 路径 |
 | `--push` | `http://hub:4173/api/ingest` | 将采集数据推送到远程 hub |
 | `--token` | `your-secret-token` | 远程 hub 的 Bearer token |
-| `--full` | — | 全量重建：删除该设备远端事件后重传（见下） |
+| `--source` | `"Codex CLI"` | 仅处理指定来源（使用看板中的完整名称） |
+| `--full` | — | 预览指定设备/来源的完整替换，不写库 |
+| `--apply` | — | 配合 `--full`，备份后执行替换 |
+| `--dry-run` | — | 只预览本次采集变化 |
+| `--allow-empty` | — | 配合 `--full --source`，明确允许以空日志清空该范围 |
 
-默认为增量采集：只上传比远端水位线（该设备该来源最新事件时间）新的数据，历史事件与已锁定的历史成本不会被改写，对远程数据库（如 Supabase）每次只需几十次批量写入。如需全量重建（如采集器逻辑变更后），使用：
+默认扫描可用历史并仅写入变化的记录，不再用最近事件时间截断迟到数据。已存费用保持原值，只补能够与新增事件核对的费用；旧口径无法还原时显示“未知口径”。价格快照更新不会重算历史费用。
+
+重建先预览，再显式执行（请先确认原始日志齐全）：
 
 ```bash
-node src/collect.mjs --full
+npm run collect -- --source "Codex CLI" --full
+npm run collect -- --source "Codex CLI" --full --apply
 ```
 
-注意：`--full` 会删除该设备的远端事件并按当前价格重算历史成本。
+执行时先在 `data/backups/` 保存该设备/来源的完整用量备份，再事务性替换日汇总、事件和旧工作区统计，清除过时记录。备份可用 `npm run db:restore -- --file <备份路径>` 预览恢复，加 `--apply` 执行。详细费用口径、同步恢复和 API 契约见 [Usage accounting and upgrades](docs/usage-accuracy.md)。
 
 ---
 
@@ -278,7 +287,7 @@ node src/collect.mjs --full
 - `npm run pricing:update` 会主动访问上游定价源，用于刷新本地价格缓存。
 - 除非显式传入 `--push`，否则不会上传任何数据。
 - `--push` 只向你提供的 URL 发送数据。
-- 设置 `INGEST_TOKEN` 后，`/api/ingest` 接口需要 Bearer token 鉴权。
+- 默认只监听本机；外部监听必须设置 token，看板、读取 API 和写入 API 均鉴权。
 - `POST /api/collect` 仅允许从本机触发，避免远程页面随意扫描你的本地日志。
 - 不要将 `data/usage.sqlite`、`.env` 或任何采集导出文件提交到 Git。
 
@@ -344,7 +353,7 @@ db/
 
 ## 参与贡献
 
-欢迎贡献。如需新增工具支持，请在 `src/collectors/` 中实现一个 collector，导出返回 `{ graphJson, modelsJson }` 的 `collect()` 函数——可参考现有 collector 了解预期数据结构。
+欢迎贡献。如需新增工具支持，请在 `src/collectors/` 中实现一个 collector，导出返回 `{ graphJson, modelsJson, eventsJson }` 的 `collect()` 函数——可参考现有 collector 了解预期数据结构。
 
 提交较大改动前，请先开 issue 讨论。
 

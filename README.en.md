@@ -3,7 +3,7 @@
 **English** | [中文](README.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.5-green)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.15-green)](https://nodejs.org)
 
 A lightweight, privacy-first dashboard for tracking your local AI token usage across multiple agents and CLI tools.
 
@@ -62,7 +62,7 @@ Run `npm run pricing:update` to refresh the bundled price snapshots. Estimates u
 
 ## Requirements
 
-- **Node.js ≥ 22.5.0** (the SQLite fallback uses the built-in `node:sqlite` module)
+- **Node.js ≥ 22.15.0** (the SQLite fallback uses the built-in `node:sqlite` module)
 
 ---
 
@@ -153,7 +153,7 @@ Collect from multiple machines and aggregate into a single dashboard.
 **1. Start the hub on your central device:**
 
 ```bash
-INGEST_TOKEN="your-secret-token" npm run serve
+HOST=0.0.0.0 INGEST_TOKEN="your-secret-token" npm run serve
 ```
 
 **2. On each device that uses AI tools, run collect with push:**
@@ -165,7 +165,7 @@ npm run collect -- \
   --token "your-secret-token"
 ```
 
-The hub merges all devices' daily and session records into one SQLite database and displays them together in the UI.
+The hub merges daily records and event details. Sign in with any username and `DASHBOARD_TOKEN` as the password (falls back to `INGEST_TOKEN`); clients use Bearer authentication. Use HTTPS at your reverse proxy for internet access. The first push includes all locally stored history; later pushes use destination-specific acknowledgments and can be retried after interruption.
 
 ---
 
@@ -222,6 +222,7 @@ Notes:
 
 | Environment variable | Default | Description |
 |---------------------|---------|-------------|
+| `HOST` | `127.0.0.1` | Bind address; external access requires a token. Docker uses `0.0.0.0` |
 | `PORT` | `4173` | HTTP server port |
 | `API_PORT` | `4173` | API server port used by `npm run dev` |
 | `DATABASE_URL` | _(unset)_ | PostgreSQL/Supabase or MySQL connection URL; takes precedence over SQLite |
@@ -229,7 +230,9 @@ Notes:
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |
 | `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL connection pool size |
 | `DB_CONNECT_TIMEOUT_MS` | `10000` | Remote database connection timeout in milliseconds |
-| `INGEST_TOKEN` | _(unset)_ | If set, `/api/ingest` requires `Authorization: Bearer <token>` |
+| `DISPLAY_TZ` | Host timezone | IANA timezone for collection dates and hourly charts; set explicitly on UTC hosts. Keep it consistent across collectors and hub |
+| `DASHBOARD_TOKEN` | _(unset)_ | Dashboard and read API password, falling back to `INGEST_TOKEN` |
+| `INGEST_TOKEN` | _(unset)_ | Upload token, falling back to `DASHBOARD_TOKEN`. Without either token, only loopback binding is allowed |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | Enable the built-in scheduled collector |
 | `SCHEDULED_COLLECT_INTERVAL_SECONDS` | `300` | Scheduled collection interval in seconds, minimum 10 seconds |
 | `SCHEDULED_COLLECT_RUN_ON_START` | `false` | Run one collection shortly after server startup |
@@ -259,6 +262,23 @@ CLI flags for `npm run collect`:
 | `--db` | `/path/to/db` | Override the SQLite path |
 | `--push` | `http://hub:4173/api/ingest` | Push collected data to a remote hub |
 | `--token` | `your-secret-token` | Bearer token for the remote hub |
+| `--source` | `"Codex CLI"` | Process one source using its exact dashboard label |
+| `--full` | — | Preview a complete device/source replacement without writing |
+| `--apply` | — | With `--full`, back up and apply the replacement |
+| `--dry-run` | — | Preview collection changes only |
+| `--allow-empty` | — | With `--full --source`, explicitly allow clearing a scope with no logs |
+
+Collection scans available history and writes changed rows, including late events. Existing amounts are preserved; only verified usage deltas add cost. Unknown historical pricing stays marked as unknown. Updating the price catalog does not reprice stored usage.
+
+Preview a rebuild before applying it, and verify that the original logs are complete:
+
+```bash
+npm run collect -- --source "Codex CLI" --full
+npm run collect -- --source "Codex CLI" --full --apply
+```
+
+Apply saves a scoped backup in `data/backups/`, then replaces daily, event and legacy workspace rows in one transaction. Preview recovery with `npm run db:restore -- --file <backup-path>`, and add `--apply` to restore. See [Usage accounting and upgrades](docs/usage-accuracy.md) for cost provenance, sync recovery and API contracts.
+
 
 ---
 
@@ -268,7 +288,7 @@ CLI flags for `npm run collect`:
 - `npm run pricing:update` intentionally contacts upstream pricing sources to refresh local caches.
 - Nothing is uploaded unless you explicitly pass `--push`.
 - `--push` sends data only to the URL you provide.
-- When `INGEST_TOKEN` is set, the `/api/ingest` endpoint requires a Bearer token.
+- The server binds to loopback by default. External binding requires authentication for the dashboard, read APIs and uploads.
 - `POST /api/collect` only accepts loopback requests, so remote pages cannot trigger local log scans.
 - Do not commit `data/usage.sqlite`, `.env`, or any exported data files.
 
@@ -334,7 +354,7 @@ db/
 
 ## Contributing
 
-Contributions are welcome. To add support for a new tool, implement a collector in `src/collectors/` that exports a `collect()` function returning `{ graphJson, modelsJson }` — see existing collectors for the expected shape.
+Contributions are welcome. To add support for a new tool, implement a collector in `src/collectors/` that exports a `collect()` function returning `{ graphJson, modelsJson, eventsJson }` — see existing collectors for the expected shape.
 
 Please open an issue before submitting large changes.
 
