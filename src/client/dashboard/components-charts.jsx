@@ -275,7 +275,7 @@ function TopModels({ rows, onDrillModel }) {
     const m = byModel.get(k);
     m.total += r.totalTokens;
     m.cost  += r.costUSD;
-    m.count += 1;
+    m.count += r.eventCount ?? 1;
   }
   const list = Array.from(byModel.values()).sort((a, b) => b.total - a.total).slice(0, 5);
   const max = list[0]?.total || 1;

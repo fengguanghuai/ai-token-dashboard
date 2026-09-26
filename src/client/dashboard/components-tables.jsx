@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { U } from '../shared/utils.js';
 import { sourceIcon, sourceIconScale } from './source-icons.js';
 import { paginateRows } from '../shared/pagination.js';
+import { EventDetails } from './EventDetails.jsx';
 
 // Source cell: brand icon when available, otherwise the colored dot.
 function SourceTag({ source }) {
@@ -336,7 +337,7 @@ function TablePanel({ daily, sessions, runs, sources, totalTokens, onDrill, pric
 // ───────────────────────────────────────────────────────────────
 // Drawer — drill-down panel
 // ───────────────────────────────────────────────────────────────
-function DrillDrawer({ drill, daily, rangeLabel, onClose }) {
+function DrillDrawer({ drill, daily, rangeLabel, eventQuery, revision, onClose }) {
   const open = !!drill;
   const reduceMotion = useReducedMotion();
   const drawerRef = useRef(null);
@@ -449,6 +450,7 @@ function DrillDrawer({ drill, daily, rangeLabel, onClose }) {
                     <div className="detail-row"><span className="k">缓存命中率</span><span className="v" style={{color:'var(--c-indigo)', fontWeight: 600}}>{detail.totals.cacheHitRate.toFixed(1)}%</span></div>
                   </div>
 
+                  {eventQuery && <EventDetails key={JSON.stringify([eventQuery, revision])} query={eventQuery} />}
                   {detail.kind === 'session' && (
                     <div className="detail-section">
                       <h4>元数据</h4>

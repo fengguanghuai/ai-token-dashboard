@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { openDb, dateExpression, hourExpression } from '../src/db.mjs';
-import { queryDaily, queryTime } from '../src/usage-query.mjs';
+import { queryDaily, queryTime, queryTimeSummary } from '../src/usage-query.mjs';
 import { readSnapshot, writeSnapshot } from '../src/usage-store.mjs';
 import { usage, event } from './helpers/server.mjs';
 import { applyCollectionDelta } from '../src/collection-delta.mjs';
@@ -18,7 +18,7 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
     const device = `test-${randomUUID()}`;
     try {
       const snapshot = { daily: [usage({ device, costBasis: 'mixed', pricingVersion: '2026-09-25T00:00:00Z' })],
-        time: [event({ device }), event({ device, eventKey: 'b', projectPath: '/project/B' })], sessions: [] };
+        time: [event({ device }), event({ device, eventKey: 'b', projectPath: '/project/a' })], sessions: [] };
       await writeSnapshot(db, snapshot);
       snapshot.daily[0].costUSD = 2;
       await writeSnapshot(db, snapshot);
@@ -32,6 +32,14 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
       bounds.set('cursor', first.nextCursor);
       const second = await queryTime(db, bounds, null);
       assert.notEqual(first.time[0].id, second.time[0].id);
+      const summary = await queryTimeSummary(db, new URLSearchParams({ start: '2026-09-01T00:00:00Z', end: '2026-09-02T00:00:00Z', compareStart: '2026-08-30T00:00:00Z', compareEnd: '2026-08-31T00:00:00Z' }), null);
+      const details = summary.current.projectDaily.filter(row => row.device === device);
+      assert.deepEqual(details.map(row => row.projectPath).sort(), ['/project/A', '/project/a']);
+      assert.equal(details.reduce((total, row) => total + row.totalTokens, 0), 220);
+      assert.equal(summary.current.daily.find(row => row.device === device).eventCount, 2);
+      assert.ok(summary.current.hourly.some(row => row.device === device && row.eventCount === 2));
+      const projectPage = await queryTime(db, new URLSearchParams({ start: '2026-09-01T00:00:00Z', end: '2026-09-02T00:00:00Z', device, project: '/project/A' }), null);
+      assert.deepEqual(projectPage.time.map(row => row.projectPath), ['/project/A']);
       const clock = await db.get(`SELECT ${hourExpression(db.driver, "'2026-09-01T17:00:00Z'", 'Asia/Shanghai')} AS hour, ${dateExpression(db.driver, "'2026-09-01T17:00:00Z'", 'Asia/Shanghai')} AS day`);
       assert.equal(Number(clock.hour), 1); assert.equal(clock.day, '2026-09-02');
       const root = mkdtempSync(join(tmpdir(), 'migration-test-'));

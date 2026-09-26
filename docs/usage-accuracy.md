@@ -131,7 +131,15 @@ Avoid simultaneous collectors writing the same device/source.
 - `GET /api/time?start=<ISO timestamp>&end=<ISO timestamp>&limit=2000` returns
   `{ range, time, nextCursor }`. Without bounds it defaults to the latest 30 days.
   Send `cursor=<nextCursor>` with the same bounds until `nextCursor` is null.
-  A page limit must be 1–2000; invalid cursors/ranges return 400.
+  A page limit must be 1–2000; invalid cursors/ranges return 400. Repeated
+  `source`, `device`, `model`, and `project` parameters filter events. Cursors
+  also bind these filters; restart pagination after changing them.
+- `GET /api/time/summary?start=<ISO timestamp>&end=<ISO timestamp>` returns
+  complete-range `current` aggregates (`daily`, `projectDaily`, `hourly`, and
+  `eventCount`), plus optional `previous` aggregates when both `compareStart`
+  and `compareEnd` are supplied. Comparison must precede the current range.
+  Precise charts use this endpoint; drawers load 50 events at a time and raw
+  CSV export explicitly reads all selected pages. See [query performance](query-performance.md).
 - `POST /api/ingest` requires JSON. Missing `mode` means `incremental`; `full`
   requires explicit `scopes: [{ device, source }]` and every row must be within
   them. Empty full scopes deliberately clear all three usage tables. Invalid

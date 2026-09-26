@@ -119,6 +119,8 @@ Migration batch-upserts the three durable usage tables and verifies row counts, 
 npm run dev   # Start both the API server and the Vite dev server
 ```
 
+Development startup checks both ports before launching. A duplicate reports the occupied address without stopping existing processes or silently switching ports. Stop the original terminal with Ctrl+C before restarting. Override with `API_PORT=4273 CLIENT_PORT=5273 npm run dev` (POSIX shell).
+
 Development mode uses two ports:
 
 ```
@@ -227,6 +229,7 @@ Notes:
 | `HOST` | `127.0.0.1` | Bind address; external access requires a token. Docker uses `0.0.0.0` |
 | `PORT` | `4173` | HTTP server port |
 | `API_PORT` | `4173` | API server port used by `npm run dev` |
+| `CLIENT_PORT` | `5173` | Vite frontend port used by `npm run dev` |
 | `DATABASE_URL` | _(unset)_ | PostgreSQL/Supabase or MySQL connection URL; takes precedence over SQLite |
 | `DB_DRIVER` | `sqlite` | Database driver when `DATABASE_URL` is unset |
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |

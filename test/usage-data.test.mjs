@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchTimeRange, projectTotals, timeRangeForFilters } from '../src/client/shared/usage-data.js';
+import { fetchTimeRange, fetchTimePage, fetchTimeSummary, summaryRangeForFilters, eventQueryForFilters, projectTotals, timeRangeForFilters } from '../src/client/shared/usage-data.js';
 import { U } from '../src/client/shared/utils.js';
 import { event } from './helpers/server.mjs';
 
@@ -29,4 +29,31 @@ test('precise request includes the comparison interval and rejects invalid bound
   const f = { startDateTime: '2026-09-01T00:00:00Z', endDateTime: '2026-09-01T01:00:00Z', compare: true };
   assert.deepEqual(timeRangeForFilters(f), { start: '2026-08-31T22:59:00.000Z', end: '2026-09-01T01:00:00.000Z' });
   assert.throws(() => timeRangeForFilters({ ...f, endDateTime: 'invalid' }));
+});
+
+test('summary makes one request and detail loading fetches only the requested page', async () => {
+  const range = { start: '2026-09-01T00:00:00Z', end: '2026-09-02T00:00:00Z' };
+  let calls = 0;
+  await fetchTimeSummary(range, { fetcher: async url => {
+    calls++; assert.match(url, /^\/api\/time\/summary\?/);
+    return { ok: true, json: async () => ({ current: { daily: [], projectDaily: [], hourly: [] }, previous: null }) };
+  } });
+  assert.equal(calls, 1);
+  const page = await fetchTimePage({ ...range, source: ['Claude Code', 'Codex CLI'], project: ['/a&b'] }, { fetcher: async url => {
+    calls++; const params = new URL(url, 'http://local').searchParams;
+    assert.equal(params.get('limit'), '50'); assert.deepEqual(params.getAll('source'), ['Claude Code', 'Codex CLI']); assert.equal(params.get('project'), '/a&b');
+    return { ok: true, json: async () => ({ time: [{ id: 'first' }], nextCursor: 'next' }) };
+  } });
+  assert.equal(calls, 2); assert.equal(page.nextCursor, 'next');
+  await assert.rejects(fetchTimeSummary(range, { fetcher: async () => ({ ok: false, status: 503 }) }), /503/);
+  await assert.rejects(fetchTimeSummary(range, { fetcher: async () => ({ ok: true, json: async () => ({ time: [] }) }) }), /统计数据/);
+});
+
+test('summary separates exact current/comparison bounds; drawer and export preserve active dimensions', () => {
+  const filters = { startDateTime: '2026-09-01T00:00:00Z', endDateTime: '2026-09-01T01:00:00Z', compare: true,
+    sources: new Set(['Codex CLI', 'Claude Code']), devices: new Set(['laptop']), models: new Set(['m']) };
+  assert.deepEqual(summaryRangeForFilters(filters), { start: '2026-09-01T00:00:00.000Z', end: '2026-09-01T01:00:00.000Z', compareStart: '2026-08-31T22:59:00.000Z', compareEnd: '2026-08-31T23:59:00.000Z' });
+  const query = eventQueryForFilters(filters, 'Codex CLI', { kind: 'session', row: { source: 'Codex CLI', device: 'laptop', model: 'm', projectPath: '/a' } });
+  assert.deepEqual(query.source, ['Codex CLI']); assert.deepEqual(query.project, ['/a']); assert.equal(query.compareStart, undefined);
+  assert.equal(query.start, '2026-09-01T00:00:00.000Z');
 });
