@@ -86,3 +86,16 @@ test('HTTP: event pagination includes equal timestamps once, enforces ranges, an
     assert.equal((await fetch(app.base + `/api/time?${range}&cursor=garbage`)).status, 400);
   } finally { await app.close(); }
 });
+
+test('HTTP: range summary is authenticated, includes all events, and validates comparison bounds', async () => {
+  const app = await startServer({ DASHBOARD_TOKEN: 'summary-reader' });
+  const headers = { authorization: 'Bearer summary-reader' };
+  try {
+    await app.ingest({ time: [event(), event({ eventKey: 'b' })] });
+    assert.equal((await fetch(app.base + `/api/time/summary?${range}`)).status, 401);
+    const result = await (await fetch(app.base + `/api/time/summary?${range}`, { headers })).json();
+    assert.equal(result.current.eventCount, 2); assert.equal(result.current.daily[0].totalTokens, 220);
+    assert.equal(result.current.hourly[0].hour, 8);
+    assert.equal((await fetch(app.base + `/api/time/summary?${range}&compareStart=invalid`, { headers })).status, 400);
+  } finally { await app.close(); }
+});

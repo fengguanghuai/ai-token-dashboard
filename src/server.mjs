@@ -15,7 +15,7 @@ import { loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs
 import { queryQuota } from './quota.mjs';
 import { authorize, isLoopback, serverAccess, trustedRequest } from './http-security.mjs';
 import { validateIngest } from './ingest-validation.mjs';
-import { queryDaily, queryTime } from './usage-query.mjs';
+import { queryDaily, queryTime, queryTimeSummary } from './usage-query.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
 import { listenError } from './listen-error.mjs';
@@ -110,6 +110,11 @@ async function handleApi(req, url, res) {
         device: r.device
       }))
     });
+    return;
+  }
+  if (url.pathname === '/api/time/summary') {
+    try { sendJson(res, await queryTimeSummary(db, url.searchParams, pricingData)); }
+    catch (error) { sendJson(res, { error: error.message }, 400); }
     return;
   }
   if (url.pathname === '/api/time') {
