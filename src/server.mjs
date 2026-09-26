@@ -18,6 +18,7 @@ import { validateIngest } from './ingest-validation.mjs';
 import { queryDaily, queryTime } from './usage-query.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
+import { listenError } from './listen-error.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
 // (to the vendors' usage endpoints, using the OAuth token the CLIs stored
@@ -69,6 +70,11 @@ async function handleRequest(req, res) {
   serveStatic(url.pathname, res);
 }
 
+server.on('error', async error => {
+  console.error(listenError(error, access.host, port));
+  await db.close();
+  process.exitCode = 1;
+});
 server.listen(port, access.host, () => {
   console.log(`AI Token Dashboard: http://localhost:${port}`);
   startScheduledCollect();

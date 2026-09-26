@@ -119,6 +119,8 @@ npm run db:check
 npm run dev   # 同时启动 API 服务和 Vite 开发服务器
 ```
 
+开发启动会先检查两个端口。重复启动会提示占用地址，不会关闭已有进程，也不会自动换端口。需要重启时在原终端按 Ctrl+C。可用 `API_PORT=4273 CLIENT_PORT=5273 npm run dev` 指定其他端口。
+
 开发模式会占用两个端口：
 
 ```
@@ -227,6 +229,7 @@ docker compose up -d
 | `HOST` | `127.0.0.1` | 监听地址；外部访问需设置 token，Docker 为 `0.0.0.0` |
 | `PORT` | `4173` | HTTP 服务端口 |
 | `API_PORT` | `4173` | `npm run dev` 中 API 服务端口 |
+| `CLIENT_PORT` | `5173` | `npm run dev` 中 Vite 页面端口 |
 | `DATABASE_URL` | _未设置_ | PostgreSQL/Supabase 或 MySQL 连接 URL；设置后优先于 SQLite |
 | `DB_DRIVER` | `sqlite` | 未设置 `DATABASE_URL` 时的数据库驱动 |
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
