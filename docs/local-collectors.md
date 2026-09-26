@@ -12,6 +12,7 @@
 npm run collect
   -> src/collect.mjs
   -> src/collectors/*.mjs
+  -> collection_checkpoints: 比较日期签名，事务内核对变化日期
   -> daily_usage: 每日 source/model token 与 cost
   -> time_usage: 带真实时间与项目路径的事件明细
   -> session_usage: 保留旧 workspace/model 聚合兼容数据
@@ -39,6 +40,8 @@ npm run collect
 - `events[]`：用于生成 `time_usage`；项目排行只从带项目路径的事件聚合，按日期、设备、来源和模型过滤
 
 写入后由 `src/server.mjs` 暴露 `/api/data`（日聚合 / 项目日聚合 / 采集记录）和 `/api/time`（按时间范围、游标分页加载事件，每页最多 2000 条），前端页面消费这两个 API。
+
+解析缓存未变化时不再重写 JSON；更新缓存采用临时文件和原子替换。数据库核对以完整归一化结果的日期签名判断变化，不使用事件时间水位线，因此迟到的历史记录仍会入库。无变化时跳过用量表读取，变化时保留跨日期的项目活动和历史费用。更多说明见 [采集性能](collection-performance.md)。
 
 ## 安全边界
 

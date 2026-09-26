@@ -1,3 +1,8 @@
+CREATE TABLE IF NOT EXISTS collection_checkpoints (
+  scope_key VARCHAR(64) PRIMARY KEY,
+  state_json MEDIUMTEXT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS collection_runs (
   id BIGINT NOT NULL AUTO_INCREMENT,
   device VARCHAR(255) NOT NULL,

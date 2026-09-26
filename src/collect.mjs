@@ -5,6 +5,7 @@ import { backupSnapshot } from './usage-backup.mjs';
 import { openDb, recordRun } from './db.mjs';
 import { readSnapshot, reconcileSnapshot, snapshotDiff, writeSnapshot } from './usage-store.mjs';
 import { syncSnapshot } from './sync.mjs';
+import { applyCollectionDelta, collectionSignature } from './collection-delta.mjs';
 import { zonedParts } from './timezone.mjs';
 import { projectPath } from './project-identity.mjs';
 import { dedupeEventKeys } from './incremental.mjs';
@@ -79,12 +80,22 @@ async function collectLocal() {
     // 在完整批次上生成稳定 key，避免重复键编号随增量范围变化
     const timeRows = dedupeEventKeys(normalizeTimeRows(eventsJson, device));
 
-    const previous = await readSnapshot(db, device, label);
+    const scope = { device, source: label };
+    const incoming = { daily: dailyRows, time: timeRows, sessions: sessionRows };
+    const delta = !args.full && !preview ? await applyCollectionDelta(db, scope, incoming, { pricingData }) : null;
+    if (delta?.unchanged) {
+      const message = `daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}, unchanged`;
+      collection.scopes.push(scope);
+      await recordRun(db, { ...scope, status: dailyRows.length || sessionRows.length ? 'ok' : 'empty',
+        message, collectedAt: collection.collectedAt, command: `js-collector:${module}` });
+      console.log(`[${label}] ${message}`);
+      continue;
+    }
+    const previous = delta?.previous || await readSnapshot(db, device, label);
     if (args.full && previous.daily.length && !dailyRows.length && !args.allowEmpty) {
       throw new Error(`${label}: no source records found; refusing to erase history. Verify the log paths, or explicitly use --source and --allow-empty.`);
     }
-    const next = reconcileSnapshot(previous, { daily: dailyRows, time: timeRows, sessions: sessionRows }, { pricingData, full: Boolean(args.full) });
-    const scope = { device, source: label };
+    const next = delta?.next || reconcileSnapshot(previous, incoming, { pricingData, full: Boolean(args.full) });
     if (preview) {
       console.log(`[preview] ${label} ${JSON.stringify(snapshotDiff(previous, next))}`);
       continue;
@@ -92,9 +103,10 @@ async function collectLocal() {
     if (args.full) {
       console.log(`[backup] ${backupSnapshot(previous, [scope])}`);
     }
-    await writeSnapshot(db, next, { previous, full: Boolean(args.full), scopes: [scope] });
+    if (!delta) await writeSnapshot(db, next, { previous, full: Boolean(args.full), scopes: [scope],
+      checkpoint: { scope, signature: collectionSignature(incoming) } });
     collection.scopes.push(scope);
-    const message = `daily=${next.daily.length}, time=${next.time.length}, workspace_model=${next.sessions.length}${args.full ? ', full' : ''}`;
+    const message = `daily=${dailyRows.length}, time=${timeRows.length}, workspace_model=${sessionRows.length}${args.full ? ', full' : delta?.dates ? `, reconciled_dates=${delta.dates.length}` : ''}`;
     const run = {
       device,
       source: label,

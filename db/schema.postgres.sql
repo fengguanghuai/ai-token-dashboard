@@ -1,3 +1,8 @@
+CREATE TABLE IF NOT EXISTS collection_checkpoints (
+  scope_key VARCHAR(64) PRIMARY KEY,
+  state_json TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS collection_runs (
   id BIGSERIAL PRIMARY KEY,
   device TEXT NOT NULL,

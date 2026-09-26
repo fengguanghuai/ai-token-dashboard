@@ -60,6 +60,16 @@ precise range remains empty.
 
 ## Existing databases and scoped recovery
 
+Normal collection stores a rebuildable per-device/source input checkpoint in
+the database. Unchanged inputs skip usage-table reads; changed date buckets are
+reconciled with their stored history. Event IDs, times, models, project metadata,
+token components and cost metadata participate in the signature. This is not an
+event-time cutoff: late historical usage still invalidates its date. Usage and
+checkpoint writes commit together. Imports, restores and storage upserts
+invalidate the relevant scope, including empty replacements. Missing, corrupt
+or incompatible checkpoints fall back to complete reconciliation. See
+[collection performance](collection-performance.md) for scope and validation.
+
 Installing code does not automatically rebuild personal history. Node 22.15+
 is the supported baseline for built-in SQLite and zstd readers. Stop scheduled
 collection while replacing/restoring a scope, and verify that its original logs

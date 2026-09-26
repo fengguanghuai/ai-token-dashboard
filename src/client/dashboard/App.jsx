@@ -32,6 +32,7 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [collectStatus, setCollectStatus] = useState(null);
+  const collectionRequest = useRef(null);
 
 
   const ensureTime = useCallback((range, { force = false } = {}) => {
@@ -115,12 +116,13 @@ export function App() {
   useEffect(() => { loadData(); }, [loadData]);
 
   const syncCollectStatus = useCallback((options = {}) => {
-    return fetch('/api/collect/status')
+    return fetch(`/api/collect/status${options.wait ? '?wait=1' : ''}`, { signal: options.signal })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
       .then(data => {
+        if (options.signal?.aborted) return data;
         if (data.status === 'running') {
           setCollecting(true);
           setCollectStatus({ type: 'running', message: data.message || '正在采集本机用量…' });
@@ -138,37 +140,46 @@ export function App() {
       });
   }, [loadData]);
 
-  const waitForCollectDone = useCallback(async () => {
+  const waitForCollectDone = useCallback(async (signal) => {
     for (;;) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const data = await syncCollectStatus({ refreshOnDone: true });
+      const started = Date.now();
+      const data = await syncCollectStatus({ refreshOnDone: true, wait: true, signal });
       if (data.status !== 'running') return data;
+      // A still-running old server may ignore ?wait=1 during a frontend update.
+      // Keep that compatibility path from issuing a tight polling loop.
+      if (Date.now() - started < 500) await new Promise(resolve => setTimeout(resolve, 500));
+      signal?.throwIfAborted();
     }
   }, [syncCollectStatus]);
 
   useEffect(() => {
-    let cancelled = false;
-    syncCollectStatus()
+    const controller = new AbortController();
+    collectionRequest.current = controller;
+    syncCollectStatus({ signal: controller.signal })
       .then(data => {
-        if (!cancelled && data.status === 'running') waitForCollectDone();
+        if (!controller.signal.aborted && data.status === 'running') return waitForCollectDone(controller.signal);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => { controller.abort(); collectionRequest.current?.abort(); };
   }, [syncCollectStatus, waitForCollectDone]);
 
   const runCollect = useCallback(() => {
+    collectionRequest.current?.abort();
+    const controller = new AbortController();
+    collectionRequest.current = controller;
     setCollecting(true);
     setCollectStatus({ type: 'running', message: '正在采集本机用量…' });
-    fetch('/api/collect', { method: 'POST' })
+    fetch('/api/collect', { method: 'POST', signal: controller.signal })
       .then(async r => {
         const data = await r.json().catch(() => ({}));
         if (!r.ok && r.status !== 202) {
           throw new Error(data.error || data.stderr || `HTTP ${r.status}`);
         }
         setCollectStatus({ type: 'running', message: data.message || '正在采集本机用量…' });
-        return waitForCollectDone();
+        return waitForCollectDone(controller.signal);
       })
       .catch(err => {
+        if (controller.signal.aborted) return;
         setCollecting(false);
         setCollectStatus({ type: 'error', message: err.message || '采集失败' });
       });
