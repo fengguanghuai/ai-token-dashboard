@@ -36,7 +36,7 @@ const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 // Path resolution
 // ---------------------------------------------------------------------------
 
-function getSessionRoots() {
+export function getSessionRoots() {
   const envRoots = envPathList(process.env.GROK_HOME ? join(process.env.GROK_HOME, 'sessions') : null);
   if (envRoots.length) return envRoots;
   return configuredPaths('grok', 'roots', [`${homedir()}/.grok/sessions`]);

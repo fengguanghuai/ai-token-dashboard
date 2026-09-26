@@ -22,7 +22,7 @@ const CACHE_VERSION = 2;   // bump when parsed message shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
-function opencodeDataDir() {
+export function opencodeDataDir() {
   return configuredPath(
     'opencode',
     'dataDir',
@@ -30,13 +30,13 @@ function opencodeDataDir() {
   );
 }
 
-function legacyMessageDir() {
+export function legacyMessageDir() {
   const dataDir = opencodeDataDir();
   if (!dataDir) return null;
   return join(dataDir, 'storage', 'message');
 }
 
-function isOpenCodeDbFilename(name) {
+export function isOpenCodeDbFilename(name) {
   if (extname(name) !== '.db') return false;
   const stem = basename(name, '.db');
   if (stem === 'opencode') return true;

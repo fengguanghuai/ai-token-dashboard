@@ -58,12 +58,12 @@ function getCodexHomes() {
   return envPathList(process.env.CODEX_HOME, configuredPaths('codex', 'homes'));
 }
 
-function getSessionRoots() {
+export function getSessionRoots() {
   const subdirs = configuredStrings('codex', 'sessionSubdirs', ['sessions', 'archived_sessions']);
   return getCodexHomes().flatMap((home) => subdirs.map((subdir) => join(home, subdir)));
 }
 
-function getHeadlessRoots() {
+export function getHeadlessRoots() {
   const roots = envPathList(
     process.env.AI_TOKEN_DASHBOARD_HEADLESS_DIR,
     configuredPaths('codex', 'headlessRoots')
