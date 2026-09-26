@@ -102,7 +102,7 @@ function timeRange(params, startKey = 'start', endKey = 'end') {
 
 // MySQL's default collation folds case; event and project identities do not.
 const exact = (db, column) => db.driver === 'mysql' ? `${column} COLLATE utf8mb4_bin` : column;
-function eventFilters(db, params) {
+export function eventFilters(db, params) {
   const filters = {}, values = [], clauses = [];
   for (const [key, column] of [['source', 'source'], ['device', 'device'], ['model', 'model'], ['project', 'project_path']]) {
     const selected = [...new Set(params.getAll(key))].sort();

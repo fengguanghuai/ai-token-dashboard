@@ -18,6 +18,7 @@ import { validateIngest } from './ingest-validation.mjs';
 import { queryDaily, queryTime, queryTimeSummary, queryUsageMetadata, queryHourly } from './usage-query.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
+import { streamUsageCsv } from './usage-export.mjs';
 import { listenError } from './listen-error.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
@@ -81,6 +82,15 @@ server.listen(port, access.host, () => {
 });
 
 async function handleApi(req, url, res) {
+  if (url.pathname === '/api/export.csv') {
+    if (req.method !== 'GET') { sendJson(res, { error: 'Method not allowed' }, 405); return; }
+    try { await streamUsageCsv(db, url.searchParams, res, pricingData); }
+    catch (error) {
+      if (res.headersSent) res.destroy(error);
+      else sendJson(res, { error: error.message }, error.status || 500);
+    }
+    return;
+  }
   if (url.pathname === '/api/data') {
     const rawRuns = await all(`
       SELECT id, device, source, status, message,
