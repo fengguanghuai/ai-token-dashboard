@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "doctor": "node src/doctor.mjs",
     "collect": "node src/collect.mjs",
     "pricing:update": "node src/update-pricing.mjs",
     "pricing:backfill": "node src/backfill-pricing.mjs",
@@ -17,7 +18,8 @@
     "build": "vite build",
     "preview": "npm run build && node src/server.mjs",
     "serve": "node src/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:onboarding": "npm run build && node scripts/onboarding-smoke.mjs"
   },
   "engines": {
     "node": ">=22.15.0"

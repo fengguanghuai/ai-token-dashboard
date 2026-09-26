@@ -11,6 +11,7 @@ import { readSnapshot, writeSnapshot } from '../src/usage-store.mjs';
 import { usage, event } from './helpers/server.mjs';
 import { applyCollectionDelta } from '../src/collection-delta.mjs';
 import { invalidateCollectionState } from '../src/collection-state.mjs';
+import { checkDatabase } from '../src/doctor-checks.mjs';
 
 for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', 'TEST_MYSQL_URL']]) {
   test(`${name}: schema upgrades, exact upserts, project query, pagination and timezone`, { skip: !process.env[variable] }, async () => {
@@ -23,6 +24,12 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
       snapshot.daily[0].costUSD = 2;
       await writeSnapshot(db, snapshot);
       assert.equal((await readSnapshot(db, device)).daily[0].costUSD, 2);
+      const beforeDoctor = await readSnapshot(db, device);
+      const diagnosis = [];
+      await checkDatabase((id, status) => diagnosis.push({ id, status }), { input: { url: process.env[variable] }, device });
+      assert.ok(diagnosis.some(check => check.id === 'database.schema' && check.status === 'ok'));
+      assert.ok(diagnosis.every(check => check.status !== 'error'));
+      assert.deepEqual(await readSnapshot(db, device), beforeDoctor);
       const day = await queryDaily(db, new URLSearchParams(), null);
       assert.ok(day.projectDaily.filter(row => row.device === device).every(row => typeof row.totalTokens === 'number'));
       assert.equal(day.projectDaily.filter(row => row.device === device).length, 2);

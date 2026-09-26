@@ -46,7 +46,7 @@ const CACHE_VERSION = 3;   // bump when parseSessionFile output shape changes
 // ---------------------------------------------------------------------------
 
 /** All roots that may contain OpenClaw agent data. */
-function getAgentRoots() {
+export function getAgentRoots() {
   return configuredPaths('openclaw', 'agentRoots');
 }
 

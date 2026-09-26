@@ -57,7 +57,7 @@ function warnZstdUnavailable(label) {
 // Path resolution
 // ---------------------------------------------------------------------------
 
-function getSessionRoots() {
+export function getSessionRoots() {
   return envPathList(process.env.DSH_SESSIONS || (process.env.DSH_HOME && join(process.env.DSH_HOME, 'sessions')),
     configuredPaths('dsh', 'roots', [`${homedir()}/.dsh/sessions`]));
 }

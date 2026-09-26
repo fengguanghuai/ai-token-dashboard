@@ -34,7 +34,7 @@ const CACHE_VERSION = 1;   // bump when parsed event shape changes
 // Path resolution
 // ---------------------------------------------------------------------------
 
-function getTmpDir() {
+export function getTmpDir() {
   return configuredPath('gemini', 'tmpDir', join(homedir(), '.gemini', 'tmp'));
 }
 

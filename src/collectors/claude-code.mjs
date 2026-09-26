@@ -67,14 +67,18 @@ async function collectJsonlFiles(dir) {
   return results;
 }
 
-async function getClaudeDesktopLocalAgentRoots() {
-  if (process.platform !== 'darwin') return [];
-
-  const base = configuredPath(
+export function getDesktopBase() {
+  if (process.platform !== 'darwin' || envPathList(process.env.CLAUDE_CONFIG_DIR).length
+      || !configuredBool('claude', 'includeDesktopLocalAgent', true)) return null;
+  return configuredPath(
     'claude',
     'desktopLocalAgentBase',
     `${homedir()}/Library/Application Support/Claude/local-agent-mode-sessions`
   );
+}
+
+async function getClaudeDesktopLocalAgentRoots() {
+  const base = getDesktopBase();
   if (!base) return [];
   const sessionDirs = await collectClaudeDirs(base);
   return sessionDirs.filter((dir) => /[/\\]local_[^/\\]+[/\\]\.claude$/.test(dir));

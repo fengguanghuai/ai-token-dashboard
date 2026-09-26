@@ -69,16 +69,20 @@ Run `npm run pricing:update` to refresh the bundled price snapshots. Estimates u
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-npm install
+# 1. Install locked dependencies from the project root
+npm ci
 
-# 2. Collect usage data from all local tools
+# 2. Check the environment (missing database/build warnings are normal initially)
+npm run doctor
+
+# 3. Initialize the database and collect local usage
+npm run db:init
 npm run collect
 
-# 3. Build the frontend
+# 4. Build the frontend
 npm run build
 
-# 4. Start the server
+# 5. Start the server
 npm run serve
 ```
 
@@ -90,6 +94,14 @@ http://localhost:4173/review # Retrospective view
 ```
 
 Usage data is written to `data/usage.sqlite`. The `data/` directory is gitignored and stays local.
+
+For development, run `npm run dev` and open `http://127.0.0.1:5173/`. If a port is occupied, check whether the project is already running before starting another instance.
+
+Run `npm run doctor` when startup or collection fails, or collection returns no data. It checks the environment, file metadata and the existing database without collecting, initializing tables, or changing historical costs. Missing paths for unused tools are expected; candidate files do not prove valid usage is present.
+
+Use `npm run --silent doctor -- --json` for a shareable report (no connection strings, tokens, personal paths or raw collection errors). Use `--device <name>` for custom device names. See [diagnostic details](docs/doctor.md) for statuses and limitations.
+
+Contributors can run `npm run test:onboarding` to verify the build, first/repeated collection, and pages/APIs with synthetic logs and a temporary database. It does not collect personal logs. CI runs this flow on macOS, Linux, and Windows.
 
 ### Shared multi-device database
 

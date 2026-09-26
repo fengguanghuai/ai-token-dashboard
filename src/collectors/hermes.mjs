@@ -24,7 +24,7 @@ const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 // Path resolution
 // ---------------------------------------------------------------------------
 
-function getDbPath() {
+export function getDbPath() {
   const hermesHome = process.env.HERMES_HOME;
   if (hermesHome) return join(expandPath(hermesHome), 'state.db');
   return configuredPath('hermes', 'dbPath');
