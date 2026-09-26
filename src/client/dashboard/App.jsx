@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { U } from '../shared/utils.js';
-import { dailyRangeForFilters, hourlyRangeForFilters, fetchDailyRange, fetchHourlyRange, fetchTimeRange, fetchTimeSummary, projectTotals, summaryRangeForFilters, eventQueryForFilters, filterDimensions, summarySourceOptions } from '../shared/usage-data.js';
+import { dailyRangeForFilters, hourlyRangeForFilters, fetchDailyRange, fetchHourlyRange, usageExportUrl, fetchTimeSummary, projectTotals, summaryRangeForFilters, eventQueryForFilters, filterDimensions, summarySourceOptions } from '../shared/usage-data.js';
 import { useRangeQuery } from '../shared/use-range-query.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
@@ -362,40 +362,13 @@ function Dashboard({ M, filters, setFilters, refreshing, collecting, collectStat
   }, [filters.sources, filters.devices, M.runs]);
 
   // ───── Export ─────
-  const exportRequest = useRef(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState(null);
-  useEffect(() => {
-    exportRequest.current?.abort(); setExporting(false); setExportError(null);
-    return () => exportRequest.current?.abort();
-  }, [filters, focusedSource]);
   const detailQuery = useMemo(() => filters.precise && preciseReady && drill && drill.kind !== 'run'
     ? eventQueryForFilters(filters, focusedSource, drill) : null, [filters, focusedSource, drill, preciseReady]);
-  const onExportAll = async () => {
-    const controller = new AbortController();
-    exportRequest.current?.abort(); exportRequest.current = controller;
-    setExporting(true); setExportError(null);
-    try {
-      const rows = filters.precise ? await fetchTimeRange(eventQueryForFilters(filters, focusedSource), { signal: controller.signal }) : filtered;
-      if (controller.signal.aborted) return;
-      const rangeName = filters.precise
-        ? `${filters.startDateTime}-${filters.endDateTime}`.replace(/[:T]/g, '-')
-        : `${filters.startDate}-${filters.endDate}`;
-      U.downloadCSV(`tokens-${filters.precise ? 'time' : 'daily'}-${rangeName}.csv`, rows, [
-        { title: filters.precise ? 'time' : 'date', field: filters.precise ? 'eventTime' : 'usageDate' },
-        { title: 'source',           field: 'source' },
-        { title: 'device',           field: 'device' },
-        { title: 'model',            field: 'model' },
-        { title: 'input',            field: 'inputTokens' },
-        { title: 'output',           field: 'outputTokens' },
-        { title: 'cache_read',       field: 'cacheReadTokens' },
-        { title: 'cache_creation',   field: 'cacheCreationTokens' },
-        { title: 'reasoning',        field: 'reasoningOutputTokens' },
-        { title: 'total',            field: 'totalTokens' },
-        { title: 'cost_usd',         field: 'costUSD' }
-      ]);
-    } catch (error) { if (!controller.signal.aborted) setExportError(`导出失败：${error.message}`); }
-    finally { if (exportRequest.current === controller) setExporting(false); }
+  const onExportAll = () => {
+    const link = document.createElement('a');
+    link.href = usageExportUrl(filters, focusedSource);
+    link.download = ''; link.target = '_blank'; link.rel = 'noopener';
+    document.body.appendChild(link); link.click(); link.remove();
   };
 
   const onExportTrend = () => {
@@ -437,11 +410,9 @@ function Dashboard({ M, filters, setFilters, refreshing, collecting, collectStat
         availableRange={availableRange}
         onExport={onExportAll}
         onExportTrend={onExportTrend}
-        exportDisabled={exporting || (filters.precise ? !preciseReady : !M.dailyState.ready)}
+        exportDisabled={filters.precise ? !preciseReady : !M.dailyState.ready}
         quota={quota} />
 
-      {exporting && <p role="status">正在导出完整范围的明细… <button className="btn" onClick={() => exportRequest.current?.abort()}>取消导出</button></p>}
-      {exportError && <p role="alert">{exportError}</p>}
       {focusedSource && (
         <div style={{
           margin: '0 0 12px',
@@ -473,8 +444,6 @@ function Dashboard({ M, filters, setFilters, refreshing, collecting, collectStat
         </div>
       ) : <>
       {filters.precise && <p className="muted" role="note">精确时间模式仅统计已采集的事件明细；没有事件记录的来源和历史区间不包含在内。</p>}
-      {!filters.precise && filtered.some(r => r.reconciliation && r.reconciliation !== 'matched') &&
-        <p className="muted" role="note">部分历史汇总缺少明细或费用口径不同，已有金额已保留。项目费用按可用事件明细统计；详见帮助。</p>}
       {/* KPI row */}
       <div className="kpi-row">
         <KPI label="总 Token" value={U.compactCN(totals.totalTokens)}

@@ -124,3 +124,10 @@ export function summarySourceOptions(rows, filters) {
   const active = new Set(filterDimensions(rows, { ...filters, sources: new Set() }).filter(row => row.totalTokens > 0).map(row => row.source));
   return U.sortSources([...new Set([...active, ...filters.sources])]).map(source => ({ source, hasUsage: active.has(source) }));
 }
+
+export function usageExportUrl(filters, focusedSource) {
+  const query = filters.precise ? { mode: 'time', ...eventQueryForFilters(filters, focusedSource) }
+    : { mode: 'daily', ...dailyRangeForFilters({ ...filters, compare: false }),
+      source: focusedSource ? [focusedSource] : [...filters.sources], device: [...filters.devices], model: [...filters.models] };
+  return `/api/export.csv?${queryParams(query)}`;
+}
