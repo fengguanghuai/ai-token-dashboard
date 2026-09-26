@@ -69,16 +69,20 @@ Pi 读取 JSONL 中的 assistant 用量、显式 tool 用量及带 usage 的上�
 ## 快速开始
 
 ```bash
-# 1. 安装依赖
-npm install
+# 1. 在项目根目录安装锁定版本的依赖
+npm ci
 
-# 2. 采集所有本地工具的用量数据
+# 2. 检查环境（首次使用时，数据库和构建产物缺失提示是正常的）
+npm run doctor
+
+# 3. 初始化数据库并采集本地工具的用量数据
+npm run db:init
 npm run collect
 
-# 3. 构建前端
+# 4. 构建前端
 npm run build
 
-# 4. 启动服务
+# 5. 启动服务
 npm run serve
 ```
 
@@ -90,6 +94,14 @@ http://localhost:4173/review # 复盘视图
 ```
 
 用量数据写入 `data/usage.sqlite`，`data/` 目录已加入 `.gitignore`，不会提交到 Git。
+
+开发模式使用 `npm run dev`，打开 `http://127.0.0.1:5173/`。端口已占用时，先确认是否已有项目实例；不要重复启动。
+
+启动失败、采集为空或采集失败时，运行 `npm run doctor` 获取检查结果和下一步操作。它只检查环境、文件元数据和已有数据库，不采集、不初始化表、不修改历史费用。未使用工具的日志路径不存在是正常提示；发现候选文件也不代表其中包含有效用量。
+
+分享诊断报告可用 `npm run --silent doctor -- --json`（不包含连接串、令牌、个人路径和原始采集错误）。自定义设备名用 `--device <名称>` 检查。详细状态和边界见 [诊断说明](docs/doctor.md)。
+
+贡献者可运行 `npm run test:onboarding`，用临时数据库及合成日志验证构建、首次/重复采集和页面/API；不会采集个人日志。CI 在 macOS、Linux、Windows 上执行此流程。
 
 ### 多设备统一数据库
 

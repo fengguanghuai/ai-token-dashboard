@@ -18,7 +18,8 @@
     "build": "vite build",
     "preview": "npm run build && node src/server.mjs",
     "serve": "node src/server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "test:onboarding": "npm run build && node scripts/onboarding-smoke.mjs"
   },
   "engines": {
     "node": ">=22.15.0"
