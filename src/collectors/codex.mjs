@@ -23,6 +23,7 @@ import { configuredPaths, configuredStrings, envPathList } from '../collector-co
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 import { cachedParse, flushCache } from './parse-cache.mjs';
+import { parseAppendOnly } from './parse-continuation.mjs';
 
 /** Recursively collect all .jsonl file paths under a directory. */
 async function collectJsonlFiles(dir) {
@@ -46,7 +47,7 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
-const CACHE_VERSION = 3;   // bump when parseSessionFile behavior or output changes
+const CACHE_VERSION = 4;   // bump when parseSessionFile behavior or output changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -184,15 +185,12 @@ export async function parseSessionFile(filePath, sessionId) {
     return [];
   }
 
-  // Per-file state
-  let currentModel     = null;
-  let previousTotal    = null;   // last seen total_token_usage summary
-  let workspace        = null;
-  let replaySession    = false;
-  let replaySecond     = null;
-  let logSessionId = null;
-  let turnId = null;
+  return parseSessionText(text, sessionId).events;
+}
 
+export function parseSessionText(text, sessionId, state = {}) {
+  let { currentModel = null, previousTotal = null, workspace = null,
+    replaySession = false, replaySecond = null, logSessionId = null, turnId = null } = state;
   const events = [];
 
   for (const raw of text.split('\n')) {
@@ -308,7 +306,8 @@ export async function parseSessionFile(filePath, sessionId) {
     }
   }
 
-  return events;
+  return { events, state: { currentModel, previousTotal, workspace,
+    replaySession, replaySecond, logSessionId, turnId } };
 }
 
 function isReplaySession(payload) {
@@ -354,7 +353,10 @@ export async function collect(pricingData = null) {
 
   for (const filePath of filePaths) {
     const sessionId = basename(filePath).replace(/\.jsonl$/, '');
-    const parsedEvents = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, fp => parseSessionFile(fp, sessionId));
+    const checkpoint = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath,
+      (fp, previous) => parseAppendOnly(fp, previous, (text, state) => parseSessionText(text, sessionId, state)),
+      [], { resume: true });
+    const parsedEvents = checkpoint.events;
 
     for (const { timestamp, date, model, workspace, tokens } of parsedEvents) {
       const eventKey = codexEventDedupKey({ timestamp, model, tokens });

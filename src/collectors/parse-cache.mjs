@@ -68,8 +68,10 @@ async function fingerprint(filePath) {
 /**
  * Return parsed records for `filePath`, reusing the cache when the file's
  * fingerprint is unchanged. `parseFile(filePath)` is only invoked on a miss.
+ * With resume enabled, the second argument is the previous result; the parser
+ * must validate its content against the current file before reusing any state.
  */
-export async function cachedParse(namespace, version, filePath, parseFile, dependencies = []) {
+export async function cachedParse(namespace, version, filePath, parseFile, dependencies = [], { resume = false } = {}) {
   if (DISABLED) return parseFile(filePath);
 
   const store = await getStore(namespace, version);
@@ -86,7 +88,7 @@ export async function cachedParse(namespace, version, filePath, parseFile, depen
     }
   }
 
-  const records = await parseFile(filePath);
+  const records = await parseFile(filePath, resume ? store.prev.get(filePath)?.records : undefined);
   // Only cache stat-able files; unstattable ones are parsed fresh every time.
   if (fp) store.next.set(filePath, { fp, records });
   return records;
