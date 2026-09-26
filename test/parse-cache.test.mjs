@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, statSync, utimesSync, mkdirSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -69,4 +69,33 @@ test('PARSE_CACHE disabled bypasses the cache entirely', async () => {
     delete process.env.PARSE_CACHE;
     cleanup();
   }
+});
+
+test('unchanged cache is not rewritten; disappeared files are dropped and failed writes retry', async () => {
+  const first = tmpFile('first'), second = tmpFile('second');
+  const cache = join(process.env.AI_TOKEN_DASHBOARD_CACHE_DIR, 'persist.json');
+  const parse = async file => [readFileSync(file, 'utf8')];
+  try {
+    await cachedParse('persist', 1, first.file, parse);
+    await cachedParse('persist', 1, second.file, parse);
+    await flushCache('persist');
+    utimesSync(cache, new Date('2001-01-01'), new Date('2001-01-01'));
+    const timestamp = statSync(cache).mtimeMs;
+    await cachedParse('persist', 1, first.file, parse);
+    await cachedParse('persist', 1, second.file, parse);
+    await flushCache('persist');
+    assert.equal(statSync(cache).mtimeMs, timestamp);
+    await cachedParse('persist', 1, first.file, parse);
+    await flushCache('persist');
+    assert.deepEqual(Object.keys(JSON.parse(readFileSync(cache, 'utf8')).files), [first.file]);
+    rmSync(cache); mkdirSync(cache); // Rename onto a directory fails.
+    writeFileSync(first.file, 'changed');
+    await cachedParse('persist', 1, first.file, parse);
+    await flushCache('persist');
+    assert.equal(readdirSync(process.env.AI_TOKEN_DASHBOARD_CACHE_DIR).some(name => name.endsWith('.tmp')), false);
+    rmSync(cache, { recursive: true });
+    await cachedParse('persist', 1, first.file, parse);
+    await flushCache('persist');
+    assert.deepEqual(JSON.parse(readFileSync(cache, 'utf8')).files[first.file].records, ['changed']);
+  } finally { first.cleanup(); second.cleanup(); }
 });

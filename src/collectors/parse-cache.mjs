@@ -17,7 +17,8 @@
  * Set PARSE_CACHE=0 to disable entirely (falls back to always parsing).
  */
 
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile, rename, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { resolveDisplayTz } from '../timezone.mjs';
 
@@ -39,13 +40,14 @@ async function getStore(namespace, version) {
   let store = stores.get(namespace);
   if (store && store.version === version) return store;
 
-  store = { version, prev: new Map(), next: new Map(), path: cachePathFor(namespace) };
+  store = { version, prev: new Map(), next: new Map(), path: cachePathFor(namespace), persisted: false };
   try {
     const raw = JSON.parse(await readFile(store.path, 'utf8'));
     if (raw && raw.version === version && raw.files) {
       for (const [key, value] of Object.entries(raw.files)) {
         if (value && typeof value.fp === 'string') store.prev.set(key, value);
       }
+      store.persisted = true;
     }
   } catch {
     // no usable cache — start cold
@@ -99,14 +101,21 @@ export async function flushCache(namespace) {
   const store = stores.get(namespace);
   if (!store) return;
 
-  const files = {};
-  for (const [key, value] of store.next) files[key] = value;
-
-  try {
-    await mkdir(dirname(store.path), { recursive: true });
-    await writeFile(store.path, JSON.stringify({ version: store.version, files }));
-  } catch {
-    // best-effort: a failed cache write must never break collection
+  const changed = !store.persisted || store.prev.size !== store.next.size
+    || [...store.next].some(([key, value]) => store.prev.get(key) !== value);
+  if (changed) {
+    const temporary = `${store.path}.${randomUUID()}.tmp`;
+    try {
+      await mkdir(dirname(store.path), { recursive: true });
+      await writeFile(temporary, JSON.stringify({ version: store.version, files: Object.fromEntries(store.next) }));
+      await rename(temporary, store.path);
+      store.persisted = true;
+    } catch {
+      // Retry on the next flush, even if the in-memory entries are unchanged.
+      store.persisted = false;
+    } finally {
+      await rm(temporary, { force: true }).catch(() => {});
+    }
   }
 
   store.prev = store.next;
