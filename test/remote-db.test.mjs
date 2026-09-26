@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { openDb, dateExpression, hourExpression } from '../src/db.mjs';
+import { usageCsvPages } from '../src/usage-export.mjs';
 import { queryDaily, queryTime, queryTimeSummary, queryHourly, queryUsageMetadata } from '../src/usage-query.mjs';
 import { readSnapshot, writeSnapshot } from '../src/usage-store.mjs';
 import { usage, event } from './helpers/server.mjs';
@@ -41,6 +42,11 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
       const hourly = await queryHourly(db, new URLSearchParams({ startDate: '2026-09-01', endDate: '2026-09-01' }));
       assert.equal(hourly.hourly.filter(row => row.device === device).reduce((sum, row) => sum + row.eventCount, 0), 2);
       assert.equal((await queryHourly(db, new URLSearchParams({ startDate: '2026-01-01', endDate: '2026-01-01' }))).hourly.filter(row => row.device === device).length, 0);
+      for (const mode of ['daily', 'time']) {
+        let csv = '';
+        for await (const page of usageCsvPages(db, new URLSearchParams({mode, device, start:'2026-09-01T00:00:00Z',end:'2026-09-02T00:00:00Z'}), null)) csv += page;
+        assert.equal(csv.trim().split('\r\n').length, mode === 'daily' ? 2 : 3);
+      }
       const bounds = new URLSearchParams({ start: '2026-09-01T00:00:00Z', end: '2026-09-02T00:00:00Z', limit: '1' });
       const first = await queryTime(db, bounds, null);
       assert.ok(first.nextCursor);
