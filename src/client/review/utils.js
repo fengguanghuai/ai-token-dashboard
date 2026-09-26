@@ -84,7 +84,7 @@ function getPeriod(id, today = new Date(), rows = []) {
     };
   }
   if (id === 'all') {
-    const dates = rows.map(r => r.usageDate).filter(Boolean).sort();
+    const dates = (Array.isArray(rows) ? rows.map(r => r.usageDate) : [rows.start, rows.end]).filter(Boolean).sort();
     const start = dates[0] || localDateStr(t);
     const end = dates[dates.length - 1] || localDateStr(t);
     return {

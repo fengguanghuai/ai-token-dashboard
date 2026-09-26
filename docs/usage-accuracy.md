@@ -126,8 +126,15 @@ Avoid simultaneous collectors writing the same device/source.
   Browsers use Basic auth with any username and the token as password; clients
   can send `Authorization: Bearer <token>`. Use HTTPS on externally hosted hubs.
 - `GET /api/data?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` returns daily summaries,
-  `projectDaily`, `eventRange`, and reconciliation fields. Dates are optional.
+  `projectDaily`, global `dateRange`/`eventRange`, global `dimensions` (devices,
+  sources, models), and reconciliation fields. Dates are optional.
   `sessions` remains an empty compatibility field.
+- `GET /api/hourly?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` returns hourly
+  aggregates within inclusive local dates in `DISPLAY_TZ`. Bounds are optional;
+  invalid or reversed bounds return 400. The dashboard requests only the last
+  28 visible days. Ordinary dashboard/review queries include their comparison
+  period, and use bounded, short-lived in-memory caches with retry/cancellation.
+  Upgrade the server together with the frontend so global metadata is available.
 - `GET /api/time?start=<ISO timestamp>&end=<ISO timestamp>&limit=2000` returns
   `{ range, time, nextCursor }`. Without bounds it defaults to the latest 30 days.
   Send `cursor=<nextCursor>` with the same bounds until `nextCursor` is null.

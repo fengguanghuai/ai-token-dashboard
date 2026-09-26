@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import {
-  dateExpression, hourExpression, openDb,
+  openDb,
   pruneCollectionRuns, recordRun
 } from './db.mjs';
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage } from './db-batch.mjs';
@@ -15,7 +15,7 @@ import { loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs
 import { queryQuota } from './quota.mjs';
 import { authorize, isLoopback, serverAccess, trustedRequest } from './http-security.mjs';
 import { validateIngest } from './ingest-validation.mjs';
-import { queryDaily, queryTime, queryTimeSummary } from './usage-query.mjs';
+import { queryDaily, queryTime, queryTimeSummary, queryUsageMetadata, queryHourly } from './usage-query.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
 import { listenError } from './listen-error.mjs';
@@ -95,7 +95,7 @@ async function handleApi(req, url, res) {
     const rawDaily = usage.daily;
 
     sendJson(res, {
-      eventRange: await db.get(`SELECT MIN(event_time) AS ${as('start')}, MAX(event_time) AS ${as('end')} FROM time_usage`),
+      ...await queryUsageMetadata(db),
       pricing: {
         primarySnapshotAt: pricingSnapshotTime(),
         models: Object.fromEntries([...new Set(rawDaily.map(d => d.model))]
@@ -123,25 +123,8 @@ async function handleApi(req, url, res) {
     return;
   }
   if (url.pathname === '/api/hourly') {
-    // Pre-aggregate events for the dashboard heatmap. Keeping the filter
-    // dimensions in the result lets the client apply the same source/device/
-    // model filters without downloading the much larger per-event dataset.
-    const localHour = hourExpression(db.driver);
-    const localDate = dateExpression(db.driver);
-    sendJson(res, {
-      hourly: await all(`
-        SELECT device, source,
-          ${localDate} AS ${as('usageDate')},
-          ${localHour} AS hour,
-          model,
-          COUNT(*) AS ${as('eventCount')},
-          SUM(total_tokens) AS ${as('totalTokens')},
-          SUM(cost_usd) AS ${as('costUSD')}
-        FROM time_usage
-        GROUP BY device, source, ${localDate}, ${localHour}, model
-        ORDER BY ${as('usageDate')} DESC, hour DESC
-      `)
-    });
+    try { sendJson(res, await queryHourly(db, url.searchParams)); }
+    catch (error) { sendJson(res, { error: error.message }, 400); }
     return;
   }
   if (url.pathname === '/api/quota') {

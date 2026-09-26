@@ -58,6 +58,40 @@ export async function queryDaily(db, params, pricingData) {
   };
 }
 
+// Global bounds/options remain available even when a selected period is empty.
+// These are small metadata sets, not the historical usage rows themselves.
+export async function queryUsageMetadata(db) {
+  const dates = await db.get('SELECT MIN(usage_date) AS start_date, MAX(usage_date) AS end_date FROM daily_usage');
+  const events = await db.get('SELECT MIN(event_time) AS start_time, MAX(event_time) AS end_time FROM time_usage');
+  const dimensions = await db.all(`SELECT DISTINCT ${['device', 'source', 'model'].map(key => `${exact(db, key)} AS ${key}`).join(', ')} FROM daily_usage`);
+  return {
+    dateRange: { start: dates.start_date, end: dates.end_date },
+    eventRange: { start: events.start_time, end: events.end_time },
+    dimensions: Object.fromEntries(['device', 'source', 'model'].map(key => [`${key}s`, [...new Set(dimensions.map(row => row[key]).filter(Boolean))].sort()]))
+  };
+}
+
+export async function queryHourly(db, params) {
+  const { values } = dateWhere(params); // Validate before constructing bounds.
+  const start = params.get('startDate'), end = params.get('endDate');
+  const localDate = dateExpression(db.driver), localHour = hourExpression(db.driver);
+  // The indexed UTC envelope is deliberately wider than any timezone offset.
+  // The local-date predicate is authoritative, including DST and stored rows
+  // whose usage_date was collected under a different display timezone.
+  const utc = (date, days) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400_000).toISOString();
+  const where = `${start ? ` AND event_time >= ? AND ${localDate} >= ?` : ''}${end ? ` AND event_time < ? AND ${localDate} <= ?` : ''}`;
+  const bounds = [...(start ? [utc(start, -1), values[0]] : []), ...(end ? [utc(end, 2), values.at(-1)] : [])];
+  const dimensions = ['device', 'source', 'model'];
+  const rows = await db.all(`SELECT ${dimensions.map(key => `${exact(db, key)} AS ${key}`).join(', ')},
+    ${localDate} AS local_date, ${localHour} AS local_hour, COUNT(*) AS event_count,
+    SUM(total_tokens) AS total_tokens, SUM(cost_usd) AS cost_usd FROM time_usage
+    WHERE 1=1${where} GROUP BY ${dimensions.map(key => exact(db, key)).join(', ')}, ${localDate}, ${localHour}
+    ORDER BY local_date DESC, local_hour DESC`, bounds);
+  return { hourly: rows.map(row => ({ device: row.device, source: row.source, model: row.model,
+    usageDate: row.local_date, hour: Number(row.local_hour), eventCount: Number(row.event_count),
+    totalTokens: Number(row.total_tokens), costUSD: Number(row.cost_usd) })) };
+}
+
 function timeRange(params, startKey = 'start', endKey = 'end') {
   const end = params.get(endKey) || new Date().toISOString();
   if (!Number.isFinite(Date.parse(end))) throw new Error('Invalid time range');
