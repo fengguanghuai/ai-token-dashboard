@@ -5,7 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { U } from '../shared/utils.js';
-import { fetchTimeRange, fetchTimeSummary, projectTotals, summaryRangeForFilters, eventQueryForFilters, filterDimensions, summarySourceOptions } from '../shared/usage-data.js';
+import { dailyRangeForFilters, hourlyRangeForFilters, fetchDailyRange, fetchHourlyRange, fetchTimeRange, fetchTimeSummary, projectTotals, summaryRangeForFilters, eventQueryForFilters, filterDimensions, summarySourceOptions } from '../shared/usage-data.js';
+import { useRangeQuery } from '../shared/use-range-query.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
 import { TablePanel, DrillDrawer } from './components-tables.jsx';
@@ -20,16 +21,41 @@ function summarizeCollectOutput(stdout) {
 }
 
 export function App() {
-  const [M, setM] = useState(null);
+  // ───── Filter state ─────
+  const [filters, setFilters] = useState(() => ({
+    rangeId: '30d',
+    startDate: U.daysAgo(29),
+    endDate: U.daysAgo(0),
+    precise: false,
+    startDateTime: U.startOfDayLocal(U.daysAgo(29)),
+    endDateTime: U.endOfDayLocal(U.daysAgo(0)),
+    sources: new Set(),
+    devices: new Set(),
+    models: new Set(),
+    compare: true
+  }));
   const [timeState, setTimeState] = useState({ summary: null, key: null, loading: false, error: null });
   const timeRequest = useRef(null);
   const timeLoadedKey = useRef(null);
   const [timeRevision, setTimeRevision] = useState(0);
-  const [hourlyRows, setHourlyRows] = useState(null);
-  const [hourlyError, setHourlyError] = useState(null);
+  const dailyRange = useMemo(() => {
+    try { return dailyRangeForFilters(filters); } catch { return null; }
+  }, [filters.startDate, filters.endDate, filters.compare]);
+  const hourlyRange = useMemo(() => {
+    if (filters.precise) return null;
+    try { return hourlyRangeForFilters(filters); } catch { return null; }
+  }, [filters.startDate, filters.endDate, filters.precise]);
+  const dailyState = useRangeQuery(fetchDailyRange, dailyRange, timeRevision);
+  const hourlyState = useRangeQuery(fetchHourlyRange, hourlyRange, timeRevision);
+  const M = dailyState.data;
+  const loadError = !M && dailyState.error;
+  const refreshing = dailyState.loading;
+  useEffect(() => {
+    if (filters.rangeId !== 'all' || !M?.dateRange?.start || !M?.dateRange?.end) return;
+    setFilters(previous => previous.startDate === M.dateRange.start && previous.endDate === M.dateRange.end ? previous
+      : { ...previous, startDate: M.dateRange.start, endDate: M.dateRange.end });
+  }, [filters.rangeId, M?.dateRange?.start, M?.dateRange?.end]);
   const [quota, setQuota] = useState(null);         // live subscription-window quota
-  const [loadError, setLoadError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [collectStatus, setCollectStatus] = useState(null);
   const collectionRequest = useRef(null);
@@ -57,19 +83,6 @@ export function App() {
   }, []);
   useEffect(() => () => timeRequest.current?.controller.abort(), []);
 
-  // The heatmap uses compact server-side hourly aggregates rather than the
-  // full event payload. The precise view loads its own bounded aggregates.
-  const loadHourly = useCallback(() => {
-    setHourlyError(null);
-    return fetch('/api/hourly')
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => setHourlyRows(data.hourly || []))
-      .catch(err => {
-        setHourlyRows([]);
-        setHourlyError(err.message || '小时数据加载失败');
-      });
-  }, []);
-
   // ───── Load data from API ─────
   // ───── Live subscription-window quota (5h / 7d) ─────
   // Refreshed on first load and whenever the user hits the refresh button —
@@ -82,38 +95,12 @@ export function App() {
   }, []);
 
   const loadData = useCallback(() => {
-    setRefreshing(true);
     loadQuota();
-    loadHourly();
-    fetch('/api/data')
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(data => {
-        // Assign colors to sources dynamically
-        const sourceNames = [...new Set((data.daily || []).map(r => r.source))];
-        const SOURCES = sourceNames.map((name, i) => ({
-          name,
-          color: U.getSourceColor(name)
-        }));
+    timeLoadedKey.current = null;
+    setTimeRevision(revision => revision + 1);
+  }, [loadQuota]);
 
-        setM({
-          ...data,
-          daily: data.daily || [],
-          SOURCES,
-          today: U.daysAgo(0)
-        });
-        setLoadError(null);
-        // Refresh the precise summary after new collection data arrives.
-        timeLoadedKey.current = null;
-        setTimeRevision(revision => revision + 1);
-      })
-      .catch(err => setLoadError(err.message))
-      .finally(() => setRefreshing(false));
-  }, [loadHourly, loadQuota]);
-
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { loadQuota(); }, [loadQuota]);
 
   const syncCollectStatus = useCallback((options = {}) => {
     return fetch(`/api/collect/status${options.wait ? '?wait=1' : ''}`, { signal: options.signal })
@@ -225,11 +212,12 @@ export function App() {
         ...M,
         time: timeState.summary?.current.daily || EMPTY_TIME,
         timeSummary: timeState.summary,
-        timeState, timeRevision,
-        hourly: hourlyRows || EMPTY_TIME,
-        hourlyLoading: hourlyRows === null,
-        hourlyError
+        timeState, timeRevision, dailyState, dailyRange,
+        hourly: hourlyState.ready ? hourlyState.data.hourly : EMPTY_TIME,
+        hourlyLoading: !hourlyState.ready && !hourlyState.error,
+        hourlyError: hourlyState.error
       }}
+      filters={filters} setFilters={setFilters}
       refreshing={refreshing}
       collecting={collecting}
       collectStatus={collectStatus}
@@ -243,21 +231,7 @@ export function App() {
 /* =============================================================
    Dashboard (extracted so App stays clean)
    ============================================================= */
-function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh, onCollect, onNeedTime }) {
-  // ───── Filter state ─────
-  const [filters, setFilters] = useState(() => ({
-    rangeId: '30d',
-    startDate: U.daysAgo(29),
-    endDate: U.daysAgo(0),
-    precise: false,
-    startDateTime: U.startOfDayLocal(U.daysAgo(29)),
-    endDateTime: U.endOfDayLocal(U.daysAgo(0)),
-    sources: new Set(),
-    devices: new Set(),
-    models: new Set(),
-    compare: true
-  }));
-
+function Dashboard({ M, filters, setFilters, refreshing, collecting, collectStatus, quota, onRefresh, onCollect, onNeedTime }) {
   const [trendMode, setTrendMode] = useState('stacked');
   const [drill, setDrill] = useState(null);
   const [focusedSource, setFocusedSource] = useState(null);
@@ -277,10 +251,10 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
   const sourceOptions = useMemo(() => filters.precise ? summarySourceOptions(preciseReady ? M.time : EMPTY_TIME, filters)
     : U.sourceOptions(filterBaseRows, filters), [filterBaseRows, filters, M.time, preciseReady]);
   const allSources = useMemo(() => sourceOptions.map(o => o.source), [sourceOptions]);
-  const allDevices = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.device))), [filterBaseRows]);
-  const allModels  = useMemo(() => Array.from(new Set(filterBaseRows.map(r => r.model))).filter(Boolean), [filterBaseRows]);
+  const allDevices = M.dimensions.devices;
+  const allModels = M.dimensions.models;
   const availableRange = useMemo(() => {
-    const dates = M.daily.map(r => r.usageDate).filter(Boolean).sort();
+    const dates = [M.dateRange.start, M.dateRange.end].filter(Boolean);
     const times = [M.eventRange?.start, M.eventRange?.end].filter(Boolean).sort();
     return {
       startDate: dates[0] || U.daysAgo(0),
@@ -288,7 +262,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
       startDateTime: times[0] ? U.toDateTimeLocalValue(new Date(times[0])) : U.startOfDayLocal(dates[0] || U.daysAgo(0)),
       endDateTime: times[times.length - 1] ? U.toDateTimeLocalValue(new Date(times[times.length - 1])) : U.endOfDayLocal(dates[dates.length - 1] || U.daysAgo(0))
     };
-  }, [M.daily, M.eventRange]);
+  }, [M.dateRange, M.eventRange]);
 
   // ───── Filtered data ─────
   const sourceContextRows = useMemo(() => filters.precise
@@ -463,7 +437,7 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         availableRange={availableRange}
         onExport={onExportAll}
         onExportTrend={onExportTrend}
-        exportDisabled={exporting || (filters.precise && !preciseReady)}
+        exportDisabled={exporting || (filters.precise ? !preciseReady : !M.dailyState.ready)}
         quota={quota} />
 
       {exporting && <p role="status">正在导出完整范围的明细… <button className="btn" onClick={() => exportRequest.current?.abort()}>取消导出</button></p>}
@@ -487,7 +461,12 @@ function Dashboard({ M, refreshing, collecting, collectStatus, quota, onRefresh,
         </div>
       )}
 
-      {filters.precise && !preciseReady ? (
+      {!filters.precise && !M.dailyState.ready ? (
+        <div className="panel" role={M.dailyState.error ? 'alert' : 'status'} style={{ padding: 24 }}>
+          {!M.dailyRange ? '请选择有效的日期范围' : M.dailyState.error ? `日期统计加载失败：${M.dailyState.error}` : '正在加载所选日期的统计…'}
+          {M.dailyState.error && <button className="btn" onClick={M.dailyState.retry}>重试统计</button>}
+        </div>
+      ) : filters.precise && !preciseReady ? (
         <div className="panel" role={M.timeState.error ? 'alert' : 'status'} style={{ padding: 24 }}>
           {!preciseRange ? '请选择有效的时间范围' : M.timeState.error ? `精确统计加载失败：${M.timeState.error}` : '正在加载所选时间范围的统计…'}
           {preciseRange && M.timeState.error && <button className="btn" onClick={() => onNeedTime(preciseRange, { force: true })}>重试统计</button>}

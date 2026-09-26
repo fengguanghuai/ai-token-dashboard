@@ -4,6 +4,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { U } from '../shared/utils.js';
+import { fetchDailyRange, dailyRangeForFilters } from '../shared/usage-data.js';
+import { useRangeQuery } from '../shared/use-range-query.js';
 import { RU } from './utils.js';
 import { ThemeToggle } from '../shared/ThemeToggle.jsx';
 import tokenStudioFlow from '../assets/token-studio-flow.png';
@@ -12,16 +14,20 @@ import { ToolsSection, EfficiencySection, InsightsSection } from './sections-2.j
 import './styles.css';
 
 export function ReviewApp() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
+  const [periodId, setPeriodId] = useState('month');
+  const [dateRange, setDateRange] = useState(null);
+  const today = useMemo(() => new Date(), []);
+  const period = useMemo(() => RU.getPeriod(periodId, today, dateRange || []), [periodId, today, dateRange]);
+  const query = useMemo(() => dailyRangeForFilters({
+    startDate: period.prev?.start || period.start, endDate: period.end, compare: false
+  }), [period]);
+  const state = useRangeQuery(fetchDailyRange, query);
+  const data = state.data;
+  const error = !data && state.error;
+  const loading = !data && !error;
   useEffect(() => {
-    fetch('/api/data')
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(d => { setData(d); setLoading(false); })
-      .catch(e => { setError(e.message); setLoading(false); });
-  }, []);
+    if (data?.dateRange) setDateRange(previous => previous?.start === data.dateRange.start && previous?.end === data.dateRange.end ? previous : data.dateRange);
+  }, [data?.dateRange]);
 
   if (loading) {
     return (
@@ -48,7 +54,7 @@ export function ReviewApp() {
         <div style={{fontSize: 32}}>⚠️</div>
         <div style={{color: 'var(--ink)', fontWeight: 600}}>数据加载失败</div>
         <div style={{color: 'var(--ink-soft)', fontSize: 13}}>{error}</div>
-        <button onClick={() => window.location.reload()} style={{
+        <button onClick={state.retry} style={{
           marginTop: 8, padding: '8px 18px', borderRadius: 8,
           border: '1px solid var(--rule)', background: 'var(--paper-2)',
           cursor: 'pointer', fontSize: 13
@@ -57,15 +63,10 @@ export function ReviewApp() {
     );
   }
 
-  return <ReviewDashboard rawData={data}/>;
+  return <ReviewDashboard rawData={data} period={period} periodId={periodId} setPeriodId={setPeriodId} queryState={state}/>;
 }
 
-function ReviewDashboard({ rawData }) {
-  const TODAY = new Date();
-  TODAY.setHours(0, 0, 0, 0);
-
-  const [periodId, setPeriodId] = useState('month');
-  const period = useMemo(() => RU.getPeriod(periodId, TODAY, rawData.daily), [periodId, rawData.daily]);
+function ReviewDashboard({ rawData, period, periodId, setPeriodId, queryState }) {
   const prevPeriod = useMemo(() => period.prev
     ? { start: period.prev.start, end: period.prev.end }
     : null, [period]);
@@ -171,7 +172,7 @@ function ReviewDashboard({ rawData }) {
           </div>
           <div className="nav-actions">
             <ThemeToggle className="nav-btn" />
-            <button className="nav-btn" onClick={() => window.print()}>
+            <button className="nav-btn" disabled={!queryState.ready} onClick={() => window.print()}>
               <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
                 <rect x="2.5" y="4.5" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.3"/>
                 <path d="M4 4.5V2h5v2.5M4 8.5h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
@@ -182,6 +183,10 @@ function ReviewDashboard({ rawData }) {
         </div>
       </nav>
 
+      {!queryState.ready ? <div className="page" role={queryState.error ? 'alert' : 'status'}>
+        {queryState.error ? `复盘加载失败：${queryState.error}` : '正在加载所选周期的复盘…'}
+        {queryState.error && <button className="nav-btn" onClick={queryState.retry}>重试</button>}
+      </div> : <>
       <div className="page">
         {daily.some(r => r.reconciliation && r.reconciliation !== 'matched') && <p className="section-sub" role="note">部分历史汇总与事件明细尚未核对一致。已有费用已保留，不能按当前价格快照解释为当时账单。</p>}
         <HeroSection period={period} totals={totals} prevTotals={prevTotals} stats={heroStats}/>
@@ -237,6 +242,7 @@ function ReviewDashboard({ rawData }) {
           </button>
         </div>
       </footer>
+      </>}
     </>
   );
 }

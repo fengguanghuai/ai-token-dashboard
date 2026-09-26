@@ -1,5 +1,38 @@
 import { U } from './utils.js';
 
+export function dailyRangeForFilters(filters) {
+  const { startDate, endDate } = filters;
+  for (const date of [startDate, endDate]) {
+    const stamp = Date.parse(`${date}T00:00:00Z`);
+    if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== date) throw new Error('请选择有效的日期范围');
+  }
+  if (startDate > endDate) throw new Error('请选择有效的日期范围');
+  const days = Math.round((Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`)) / 86400_000) + 1;
+  return { startDate: filters.compare ? U.addDays(startDate, -days) : startDate, endDate };
+}
+
+export function hourlyRangeForFilters(filters) {
+  dailyRangeForFilters({ ...filters, compare: false });
+  return { startDate: [filters.startDate, U.addDays(filters.endDate, -27)].sort().at(-1), endDate: filters.endDate };
+}
+
+export async function fetchDailyRange(range, { signal, fetcher = fetch } = {}) {
+  const response = await fetcher(`/api/data?${queryParams(range)}`, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  if (!['daily', 'projectDaily', 'runs'].every(key => Array.isArray(data[key])) || !data.dateRange
+      || !['devices', 'sources', 'models'].every(key => Array.isArray(data.dimensions?.[key]))) throw new Error('日期统计数据格式错误，请确认服务端已升级');
+  return data;
+}
+
+export async function fetchHourlyRange(range, { signal, fetcher = fetch } = {}) {
+  const response = await fetcher(`/api/hourly?${queryParams(range)}`, { signal });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data.hourly)) throw new Error('小时统计数据格式错误');
+  return data;
+}
+
 export function timeRangeForFilters(filters) {
   const start = new Date(filters.startDateTime).getTime();
   const end = new Date(filters.endDateTime).getTime();
