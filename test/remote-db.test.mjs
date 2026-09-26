@@ -9,6 +9,8 @@ import { openDb, dateExpression, hourExpression } from '../src/db.mjs';
 import { queryDaily, queryTime } from '../src/usage-query.mjs';
 import { readSnapshot, writeSnapshot } from '../src/usage-store.mjs';
 import { usage, event } from './helpers/server.mjs';
+import { applyCollectionDelta } from '../src/collection-delta.mjs';
+import { invalidateCollectionState } from '../src/collection-state.mjs';
 
 for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', 'TEST_MYSQL_URL']]) {
   test(`${name}: schema upgrades, exact upserts, project query, pagination and timezone`, { skip: !process.env[variable] }, async () => {
@@ -45,9 +47,18 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
         assert.equal(restored.daily[0].pricingVersion, '2026-09-25T00:00:00Z');
         assert.equal(restored.sessions.length, 1);
       } finally { rmSync(root, { recursive: true, force: true }); }
+      const scope = { device, source: 'Codex CLI' };
+      await applyCollectionDelta(db, scope, snapshot);
+      assert.equal((await applyCollectionDelta(db, scope, snapshot)).unchanged, true);
+      snapshot.time.push(event({ device, eventKey: 'old-late', usageDate: '2025-01-01', eventTime: '2025-01-01T12:00:00.000Z' }));
+      snapshot.daily.push(usage({ device, usageDate: '2025-01-01' }));
+      const delta = await applyCollectionDelta(db, scope, snapshot);
+      assert.deepEqual(delta.dates, ['2025-01-01']);
+      assert.equal((await readSnapshot(db, device)).time.length, 3);
       await writeSnapshot(db, { daily: [], time: [], sessions: [] }, { full: true, scopes: [{ device, source: 'Codex CLI' }] });
       assert.equal((await readSnapshot(db, device)).daily.length, 0);
     } finally {
+      await invalidateCollectionState(db, [{ device, source: 'Codex CLI' }]);
       for (const table of ['daily_usage', 'time_usage', 'session_usage']) await db.run(`DELETE FROM ${table} WHERE device = ?`, [device]);
       await db.close();
     }

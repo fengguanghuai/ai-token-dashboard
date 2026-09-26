@@ -4,6 +4,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { resolveDisplayTz, zonedParts } from './timezone.mjs';
+import { invalidateCollectionState } from './collection-state.mjs';
 export { resolveDisplayTz } from './timezone.mjs';
 
 export const defaultDbPath = resolve(process.cwd(), 'data', 'usage.sqlite');
@@ -78,9 +79,10 @@ function openSqlite(path, readOnly = false) {
     async get(sql, params = []) { return client.prepare(sql).get(...params); },
     async run(sql, params = []) { return client.prepare(sql).run(...params); },
     async transaction(work) {
-      client.exec('BEGIN');
+      client.exec('BEGIN IMMEDIATE');
       try {
-        const value = await work(db);
+        const tx = { ...db, transaction: nested => nested(tx) };
+        const value = await work(tx);
         client.exec('COMMIT');
         return value;
       } catch (error) {
@@ -321,7 +323,10 @@ export async function upsertTimeUsage(db, row) {
 }
 
 export async function deleteTimeUsageForSource(db, device, source) {
-  await db.run('DELETE FROM time_usage WHERE device = ? AND source = ?', [device, source]);
+  await db.transaction(async tx => {
+    await invalidateCollectionState(tx, [{ device, source }]);
+    await tx.run('DELETE FROM time_usage WHERE device = ? AND source = ?', [device, source]);
+  });
 }
 
 export async function upsertDaily(db, row) {

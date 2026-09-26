@@ -1,5 +1,6 @@
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage, fromStored, TABLES, tokenFields } from './db-batch.mjs';
 import { calculateCost, hasModelPricing } from './pricing.mjs';
+import { invalidateCollectionState, saveCollectionState } from './collection-state.mjs';
 
 const keyFields = Object.fromEntries(Object.entries(TABLES).map(([kind, table]) =>
   [kind, table.keys.map(column => table.fields.find(([c]) => c === column)[1])]
@@ -80,6 +81,9 @@ export function reconcileSnapshot(previous, incoming, { pricingData = null, full
     };
   });
   const activities = new Map();
+  for (const row of previous.activities || []) {
+    activities.set(JSON.stringify([row.project_path, row.model]), row.last_activity);
+  }
   for (const event of merged.values()) {
     const key = JSON.stringify([event.projectPath, event.model]);
     if (event.eventTime > (activities.get(key) || '')) activities.set(key, event.eventTime);
@@ -104,9 +108,11 @@ export function snapshotDiff(previous, next) {
   }));
 }
 
-export async function writeSnapshot(db, snapshot, { scopes = [], full = false, previous = null } = {}) {
+export async function writeSnapshot(db, snapshot, { scopes = [], full = false, previous = null, checkpoint = null } = {}) {
   if (full && !scopes.length) throw new Error('Full replacement requires explicit scopes');
   await db.transaction(async tx => {
+    // Acquire all scope locks in a consistent order before touching any table.
+    await invalidateCollectionState(tx, [...scopes, ...snapshot.daily, ...snapshot.time, ...snapshot.sessions]);
     if (full) for (const { device, source } of scopes) for (const { table } of Object.values(TABLES)) {
       await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [device, source]);
     }
@@ -120,5 +126,6 @@ export async function writeSnapshot(db, snapshot, { scopes = [], full = false, p
       });
       await write(tx, changed);
     }
+    if (checkpoint) await saveCollectionState(tx, checkpoint.scope, checkpoint.signature);
   });
 }

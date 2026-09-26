@@ -1,5 +1,6 @@
 import { mysqlRowKey, nowExpression } from './db.mjs';
 import { zonedParts } from './timezone.mjs';
+import { invalidateCollectionState } from './collection-state.mjs';
 
 export const tokenFields = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'reasoningOutputTokens', 'totalTokens'];
 const tokenColumns = ['input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens', 'reasoning_output_tokens', 'total_tokens'];
@@ -25,6 +26,13 @@ export function fromStored(kind, row) {
 }
 
 async function batchUpsert(db, kind, rows) {
+  if (!rows.length) return;
+  const work = tx => writeRows(tx, kind, rows);
+  return db.transaction ? db.transaction(work) : work(db);
+}
+
+async function writeRows(db, kind, rows) {
+  await invalidateCollectionState(db, rows);
   const { table, keys, fields } = TABLES[kind];
   const columns = fields.map(([column]) => column);
   const mutable = columns.filter(column => !keys.includes(column));

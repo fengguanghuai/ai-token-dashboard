@@ -141,7 +141,9 @@ test('MySQL upserts bind every placeholder and use duplicate-key updates', async
   await upsertTimeUsage(db, { ...dailyRow, eventKey: 'event', eventTime: '2026-06-22T10:00:00Z' });
   await upsertSession(db, { ...dailyRow, sessionId: 'session' });
 
-  assert.equal(calls.length, 3);
-  assert.ok(calls.every(call => call.sql.includes('ON DUPLICATE KEY UPDATE')));
+  assert.equal(calls.filter(call => call.sql.includes('INSERT INTO collection_checkpoints')).length, 3);
+  const writes = calls.filter(call => /INSERT INTO (daily|time|session)_usage/.test(call.sql));
+  assert.equal(writes.length, 3);
+  assert.ok(writes.every(call => call.sql.includes('ON DUPLICATE KEY UPDATE')));
   assert.ok(calls.every(call => /^[a-f0-9]{64}$/.test(call.params[0])), 'row keys should be SHA-256 hashes');
 });

@@ -142,7 +142,9 @@ DB_PATH=data/demo.sqlite npm run serve
 
 生成结果是确定性的（固定随机种子），同样的命令永远得到同样的看板。
 
-看板右上角的「采集」按钮会调用本机接口 `POST /api/collect`，并通过 `GET /api/collect/status` 轮询进度。该接口只允许 loopback 本机访问。
+看板右上角的「采集」按钮会调用本机接口 `POST /api/collect`，并通过 `GET /api/collect/status?wait=1` 等待完成通知，无需等待固定轮询间隔。采集触发接口只允许 loopback 本机访问。
+
+正常采集按日期签名核对变化：无变化时跳过用量表读取与写入；补入旧记录时仍会核对对应的历史日期。签名与用量在同一事务提交，历史费用保留规则不变。实现边界与基准方法见 [采集性能](docs/collection-performance.md)。
 
 ---
 

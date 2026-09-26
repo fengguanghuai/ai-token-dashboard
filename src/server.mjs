@@ -16,6 +16,8 @@ import { queryQuota } from './quota.mjs';
 import { authorize, isLoopback, serverAccess, trustedRequest } from './http-security.mjs';
 import { validateIngest } from './ingest-validation.mjs';
 import { queryDaily, queryTime } from './usage-query.mjs';
+import { invalidateCollectionState } from './collection-state.mjs';
+import { collectionNotifications } from './collection-notifications.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
 // (to the vendors' usage endpoints, using the OAuth token the CLIs stored
@@ -46,6 +48,7 @@ let collectionState = {
   stdout: '',
   stderr: ''
 };
+const collectionUpdates = collectionNotifications(() => collectionState, sendJson);
 
 const server = createServer((req, res) => {
   handleRequest(req, res).catch((error) => {
@@ -143,7 +146,8 @@ async function handleApi(req, url, res) {
     return;
   }
   if (url.pathname === '/api/collect/status') {
-    sendJson(res, collectionState);
+    if (url.searchParams.get('wait') === '1') collectionUpdates.wait(res);
+    else sendJson(res, collectionState);
     return;
   }
   sendJson(res, { error: 'Not found' }, 404);
@@ -208,6 +212,7 @@ function startCollection({ reason = 'manual' } = {}) {
       finishedAt: new Date().toISOString(),
       stderr: error.message
     };
+    collectionUpdates.publish();
   });
 
   child.on('close', code => {
@@ -221,6 +226,7 @@ function startCollection({ reason = 'manual' } = {}) {
       stdout: trimOutput(stdout),
       stderr: trimOutput(stderr)
     };
+    collectionUpdates.publish();
   });
 
   return true;
@@ -319,6 +325,7 @@ async function handleIngest(req, res) {
     }
 
     await db.transaction(async (tx) => {
+      await invalidateCollectionState(tx, [...(fullRebuild ? payload.scopes : []), ...dailyRows, ...timeRows, ...sessionRows]);
       for (const row of timePairs.values()) {
         for (const table of ['daily_usage', 'time_usage', 'session_usage']) {
           await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [row.device, row.source]);

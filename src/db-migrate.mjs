@@ -1,4 +1,5 @@
 import './load-env.mjs';
+import { invalidateCollectionState } from './collection-state.mjs';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -102,6 +103,7 @@ async function bulkUpsert(db, config, rows, batchSize = 250) {
   for (let offset = 0; offset < rows.length; offset += batchSize) {
     const batch = rows.slice(offset, offset + batchSize);
     await db.transaction(async (tx) => {
+      await invalidateCollectionState(tx, batch);
       const mysql = tx.driver === 'mysql';
       const columns = mysql ? ['row_key', ...config.columns] : config.columns;
       const placeholders = batch.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ');

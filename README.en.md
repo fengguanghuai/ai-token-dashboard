@@ -142,7 +142,9 @@ DB_PATH=data/demo.sqlite npm run serve
 
 The seed is deterministic, so the same command always paints the same dashboard.
 
-The dashboard's **Collect** button calls `POST /api/collect` and polls `GET /api/collect/status`. The collect endpoint is restricted to loopback requests.
+The dashboard's **Collect** button calls `POST /api/collect` and waits for completion with `GET /api/collect/status?wait=1`, without a fixed polling delay. The collect endpoint is restricted to loopback requests.
+
+Normal collection compares per-date input signatures: unchanged input skips usage-table reads and writes, while late records still reconcile their historical dates. Checkpoints commit with usage changes and preserve the existing historical-cost rules. See [collection performance](docs/collection-performance.md) for implementation boundaries and benchmark methodology.
 
 ---
 

@@ -13,7 +13,7 @@ test('Vite forwards a same-origin collect request, while foreign browser origins
     // Exercise the HTTP -> child-process -> status path without scanning any
     // personal logs or credentials in the test runner's home directory.
     await mkdir(join(app.root, 'src'));
-    await writeFile(join(app.root, 'src', 'collect.mjs'), "console.log('fixture collection completed');\n");
+    await writeFile(join(app.root, 'src', 'collect.mjs'), "await new Promise(resolve => setTimeout(resolve, 200)); console.log('fixture collection completed');\n");
     process.env.API_PORT = new URL(app.base).port;
     vite = await createServer({ configFile: resolve('vite.config.js'), root: app.root,
       logLevel: 'silent', server: { host: '127.0.0.1', port: 0, watch: null } });
@@ -21,12 +21,7 @@ test('Vite forwards a same-origin collect request, while foreign browser origins
     const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
     const response = await fetch(`${origin}/api/collect`, { method: 'POST', headers: { origin, 'sec-fetch-site': 'same-origin' } });
     assert.equal(response.status, 202, await response.text());
-    let state;
-    for (let i = 0; i < 100; i++) {
-      state = await (await fetch(`${origin}/api/collect/status`)).json();
-      if (state.status !== 'running') break;
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+    const state = await (await fetch(`${origin}/api/collect/status?wait=1`, { signal: AbortSignal.timeout(10_000) })).json();
     assert.equal(state.status, 'ok', JSON.stringify(state));
     assert.match(state.stdout, /fixture collection completed/);
     const blocked = await fetch(`${origin}/api/collect`, { method: 'POST', headers: { origin: 'https://foreign.example' } });
