@@ -99,3 +99,16 @@ test('unchanged cache is not rewritten; disappeared files are dropped and failed
     assert.deepEqual(JSON.parse(readFileSync(cache, 'utf8')).files[first.file].records, ['changed']);
   } finally { first.cleanup(); second.cleanup(); }
 });
+
+test('resumable parsers receive the prior checkpoint only within the same version', async () => {
+  const { file, cleanup } = tmpFile('first');
+  try {
+    const parse = async (_file, previous) => ({ count: (previous?.count || 0) + 1 });
+    assert.deepEqual(await cachedParse('resume', 1, file, parse, [], { resume: true }), { count: 1 });
+    await flushCache('resume');
+    writeFileSync(file, 'second-longer');
+    assert.deepEqual(await cachedParse('resume', 1, file, parse, [], { resume: true }), { count: 2 });
+    await flushCache('resume');
+    assert.deepEqual(await cachedParse('resume', 2, file, parse, [], { resume: true }), { count: 1 });
+  } finally { cleanup(); }
+});
