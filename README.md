@@ -2,6 +2,8 @@
 
 [English](README.en.md) | **中文**
 
+[当前状态与后续工作](docs/project-status.md) · 查看已完成范围、原始待办和验收条件。
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.15-green)](https://nodejs.org)
 

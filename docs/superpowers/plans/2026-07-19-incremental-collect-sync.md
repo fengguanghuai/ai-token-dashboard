@@ -1,5 +1,7 @@
 # 增量采集同步实施计划
 
+> 历史实施计划：水位线、历史费用和全量重建部分已被后续实现替代。以下步骤保留供追溯，不是当前执行指令。当前待办见[项目状态](../../project-status.md)，现行语义见[费用与恢复](../../usage-accuracy.md)及[采集性能](../../collection-performance.md)。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把采集写库从"全量删表重插 + 逐行 upsert"改为"水位线增量 + 批量 upsert",单次采集对远程 Postgres 的往返从 1.2 万次降到 30 次以内。

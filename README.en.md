@@ -2,6 +2,8 @@
 
 **English** | [中文](README.md)
 
+[Project status and next steps (Chinese)](docs/project-status.md) · Completed scope, outstanding goals, and acceptance criteria.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.15-green)](https://nodejs.org)
 
