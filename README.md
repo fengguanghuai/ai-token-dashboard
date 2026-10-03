@@ -105,6 +105,8 @@ http://localhost:4173/review # 复盘视图
 
 贡献者可运行 `npm run test:onboarding`，用临时数据库及合成日志验证构建、首次/重复采集和页面/API；不会采集个人日志。CI 在 macOS、Linux、Windows 上执行此流程。
 
+浏览器回归：首次执行 `npx playwright install chromium`，再运行 `npm run test:browser`。它使用合成用量验证跨时区筛选、分页、导出、重试和移动布局；CI 在 Linux 执行。
+
 ### 多设备统一数据库
 
 项目支持 SQLite、PostgreSQL（包括 Supabase）和 MySQL。复制 `.env.example` 为不纳入 Git 的 `.env`，配置一个共享连接：
@@ -249,7 +251,7 @@ docker compose up -d
 | `DB_PATH` | `data/usage.sqlite` | SQLite 数据库路径 |
 | `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL 连接池大小 |
 | `DB_CONNECT_TIMEOUT_MS` | `10000` | 远程数据库连接超时毫秒数 |
-| `DISPLAY_TZ` | 主机时区 | 采集日期、热力图日期及小时所用的时区（IANA 名称，如 `Asia/Shanghai`）。默认跟随运行服务器的本机时区；部署在 UTC 主机（如 Render/Docker）上时显式指定，否则热力图会按 UTC 显示 |
+| `DISPLAY_TZ` | 主机时区 | 采集日期与页面筛选、时间显示及小时统计所用的 IANA 时区，如 `Asia/Shanghai`。浏览器沿用服务端设置；各采集端与中心应配置一致。已有日汇总不会随设置变化自动重建 |
 | `DASHBOARD_TOKEN` | _未设置_ | 看板及读取 API 的密码，未设置时复用 `INGEST_TOKEN` |
 | `INGEST_TOKEN` | _未设置_ | 推送鉴权；未设置时复用 `DASHBOARD_TOKEN`。两个都未设置时仅允许本机监听 |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | 是否启用服务内置定时采集 |

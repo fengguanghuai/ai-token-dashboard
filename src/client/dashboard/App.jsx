@@ -7,6 +7,7 @@ import { AnimatePresence } from 'motion/react';
 import { U } from '../shared/utils.js';
 import { dailyRangeForFilters, hourlyRangeForFilters, fetchDailyRange, fetchHourlyRange, usageExportUrl, fetchTimeSummary, projectTotals, summaryRangeForFilters, eventQueryForFilters, filterDimensions, summarySourceOptions } from '../shared/usage-data.js';
 import { useRangeQuery } from '../shared/use-range-query.js';
+import { displayTimeMs } from '../shared/display-time.js';
 import { Topbar, FilterBar, KPI } from './components-top.jsx';
 import { TrendChart, SourceDonut, TopModels, Gauge, GrowthPanel, Heatmap } from './components-charts.jsx';
 import { TablePanel, DrillDrawer } from './components-tables.jsx';
@@ -294,8 +295,8 @@ function Dashboard({ M, filters, setFilters, refreshing, collecting, collectStat
     if (!filters.compare) return { rows: null, dates: null, totals: null };
     const scoped = { ...filters, ...(focusedSource ? { sources: new Set([focusedSource]) } : {}) };
     if (filters.precise) {
-      const startMs = new Date(filters.startDateTime).getTime();
-      const endMs = new Date(filters.endDateTime).getTime();
+      const startMs = displayTimeMs(filters.startDateTime);
+      const endMs = displayTimeMs(filters.endDateTime);
       if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) {
         return { rows: null, dates: null, totals: null };
       }

@@ -25,7 +25,7 @@ const PERIOD_LABELS = {
 };
 
 function getPeriod(id, today = new Date(), rows = []) {
-  const t = new Date(today); t.setHours(0,0,0,0);
+  const t = new Date(`${U.localDateStr(today)}T12:00:00`); t.setHours(0,0,0,0);
   if (id === 'week') {
     const start = new Date(t); start.setDate(t.getDate() - 6);
     return {

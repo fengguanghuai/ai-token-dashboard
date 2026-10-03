@@ -19,7 +19,8 @@
     "preview": "npm run build && node src/server.mjs",
     "serve": "node src/server.mjs",
     "test": "node --test",
-    "test:onboarding": "npm run build && node scripts/onboarding-smoke.mjs"
+    "test:onboarding": "npm run build && node scripts/onboarding-smoke.mjs",
+    "test:browser": "npm run build && node scripts/browser-smoke.mjs"
   },
   "engines": {
     "node": ">=22.15.0"
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.1",
+    "playwright": "1.63.0",
     "vite": "^7.3.6"
   }
 }

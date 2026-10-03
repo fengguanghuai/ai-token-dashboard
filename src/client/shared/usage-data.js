@@ -1,4 +1,5 @@
 import { U } from './utils.js';
+import { displayTimeMs } from './display-time.js';
 
 export function dailyRangeForFilters(filters) {
   const { startDate, endDate } = filters;
@@ -34,8 +35,8 @@ export async function fetchHourlyRange(range, { signal, fetcher = fetch } = {}) 
 }
 
 export function timeRangeForFilters(filters) {
-  const start = new Date(filters.startDateTime).getTime();
-  const end = new Date(filters.endDateTime).getTime();
+  const start = displayTimeMs(filters.startDateTime);
+  const end = displayTimeMs(filters.endDateTime);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) throw new Error('请选择有效的时间范围');
   return { start: new Date(filters.compare ? start - (end - start) - 60_000 : start).toISOString(), end: new Date(end).toISOString() };
 }

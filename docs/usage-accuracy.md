@@ -147,6 +147,9 @@ a transactional migration marker; it does not recalculate historical fees.
   `projectDaily`, global `dateRange`/`eventRange`, global `dimensions` (devices,
   sources, models), and reconciliation fields. Dates are optional.
   `sessions` remains an empty compatibility field.
+- `GET /api/config` returns the server's resolved `displayTimeZone` under the
+  same read authentication. The browser loads it before initializing date
+  filters or review periods; UI timestamps and precise export bounds use it.
 - `GET /api/hourly?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` returns hourly
   aggregates within inclusive local dates in `DISPLAY_TZ`. Bounds are optional;
   invalid or reversed bounds return 400. The dashboard requests only the last

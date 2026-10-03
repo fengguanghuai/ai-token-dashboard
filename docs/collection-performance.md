@@ -40,7 +40,7 @@ Codex 三种场景使用 446 个日志文件的固定副本，并追加受控测
 
 - [ccusage_go 的项目缓存](https://github.com/SDpower/ccusage_go/blob/e2431d991b634a1a2fb2d1de6f828ea24a093a9e/internal/loader/project_cache.go)：复用未变化输入的处理结果。
 - [Vector 文件源](https://vector.dev/docs/reference/configuration/sources/file/) 与 [Fluent Bit Tail](https://docs.fluentbit.io/manual/data-pipeline/inputs/tail)：文件身份、可恢复进度、轮转处理。
-- [CouchDB 变更接口](https://docs.couchdb.org/en/stable/api/database/changes.html)：通过长轮询等待状态变化。数据库变更序列同步仍是后续优化方向。
+- [CouchDB 变更接口](https://docs.couchdb.org/en/stable/api/database/changes.html)：通过长轮询等待状态变化，此处用于采集完成通知；同步现已采用事务变更记录。
 
 本次采用这些设计思路，继续使用现有 Node.js 与数据库适配层，没有引入这些项目的运行时依赖。
 

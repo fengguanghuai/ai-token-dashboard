@@ -1,6 +1,6 @@
 # 项目状态与后续工作
 
-更新日期：2026-10-03。优化实现基于 `193277e`；本轮分支验证与合并状态单独记录。
+更新日期：2026-10-03。优化实现基于 `193277e`；本轮代码、验证与合并状态见 [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)，不代表已部署。
 
 本文件是当前待办与完成状态的统一入口。性能文档记录实现边界和测量证据，历史计划保留方案演变，不作为当前执行清单。这里的“完成”只针对该项验收范围，不代表整个项目不存在问题。
 
@@ -10,10 +10,10 @@
 | --- | --- | --- | --- |
 | START-01 | 启动端口检查与友好提示 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[启动脚本](../src/dev.mjs)：启动子进程前探测端口，冲突时给出提示。 |
 | QUERY-01 | 精确时间查询聚合、明细按需分页 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[查询说明](query-performance.md)：统计基于完整选定范围，事件详情按页加载。 |
-| SYNC-01 | 同步读取变更记录，避免完整快照比较 | 已实现，待三库 CI 验收 | [变更记录](../src/sync-journal.mjs)与用量同事务；[同步](../src/sync.mjs)按目标、设备、来源保存确认进度。首次基线后只读取变化记录，支持历史修正、重试、显式范围替换和慢目标保留。 |
+| SYNC-01 | 同步读取变更记录，避免完整快照比较 | 已完成 | [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)：[变更记录](../src/sync-journal.mjs)与用量同事务；[同步](../src/sync.mjs)按目标、设备、来源保存确认进度。首次基线后只读取变化记录，支持历史修正、重试、显式范围替换和慢目标保留；三库契约测试通过。 |
 | READ-01 | 日志从上次位置续读，避免重读变化的大文件 | 部分完成 | [PR #27](https://github.com/fengguanghuai/ai-token-dashboard/pull/27)只减少 Codex 的重复 JSON 解析；[续解析模块](../src/collectors/parse-continuation.mjs)仍 `readFile` 整个变化文件并校验旧前缀。尚未实现只读新增字节。 |
 
-**计数：2 项完成、1 项待三库验收、1 项部分完成。** 页面“上一周期对比”和多设备“同步比较”是不同功能，不能用 QUERY-01 或 PR #26 代替 SYNC-01 的完成证据。
+**计数：3 项完成、1 项部分完成。** 页面“上一周期对比”和多设备“同步比较”是不同功能，不能用 QUERY-01 或 PR #26 代替 SYNC-01 的完成证据。
 
 ## 其他已交付内容
 
@@ -26,13 +26,25 @@
 | 普通首页和复盘按日期查询 | [PR #26](https://github.com/fengguanghuai/ai-token-dashboard/pull/26) | 包含对比周期、全局筛选选项、有限缓存和请求取消；“全部”仍查询全部历史汇总。 |
 | 用量 CSV 流式导出、移除首页历史口径横幅 | [PR #28](https://github.com/fengguanghuai/ai-token-dashboard/pull/28) | 服务端分批输出，下载由浏览器管理；帮助说明和历史费用保留。不是事务快照导出。 |
 
-截至基线，以上 PR 的合并提交均在 Git 历史中。历史测试与基准结果只适用于当时版本和样本；本次状态整理未重新执行全项目审计或性能测量。
+截至基线，以上 PR 的合并提交均在 Git 历史中。历史测试与基准结果只适用于当时版本和样本。
 
-## 下一步顺序与验收条件
+## 本轮高收益优化
+
+[PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30) 按用户确认顺序实现；验收边界见[查询性能](query-performance.md)和[同步性能](collection-performance.md)。
+
+| 编号 | 范围 | 代码与验证 |
+| --- | --- | --- |
+| TZ-01 | 页面与服务端时区一致 | `/api/config`、`display-time.js`；覆盖跨月、DST、明细、对比与导出范围。已有日汇总不自动重建。 |
+| ASSET-01 | 静态资源与路由加载 | gzip、ETag、HEAD、私有缓存；首页与复盘独立加载，认证先于缓存判断。 |
+| QUOTA-01 | 合并额度并发请求 | `request-cache.mjs`；共享进行中的调用，保留成功/错误两种 TTL，失败可重试。 |
+| HOURLY-01 | 复用重复小时统计 | 10 秒有限缓存，以数据库来源修订号失效；外部连接写入由集成测试验证。 |
+| BROWSER-01 | 可重复的浏览器回归 | `npm run test:browser`，临时 SQLite、合成数据、跨时区 Chromium；独立 CI job。 |
+
+## 原始验收记录与后续顺序
 
 ### 1. SYNC-01：事务变更记录与确认进度
 
-当前实现使用持久化变更记录和每个目标端独立的确认进度，替代常规同步的完整快照哈希比较。SQLite 本地契约测试已覆盖下述正确性条件；PostgreSQL/MySQL 复用同一测试契约，待 CI 验收。
+当前实现使用持久化变更记录和每个目标端独立的确认进度，替代常规同步的完整快照哈希比较。SQLite 本地契约测试及 CI 中 PostgreSQL/MySQL 的同一契约均通过。独立数据库副本测得无变化同步约 2 ms，旧方式约 409–417 ms；1 条历史修正只读取并发送 1 条变化，历史金额未重新计算。
 
 完成条件：
 

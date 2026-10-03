@@ -1,10 +1,53 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { openDb } from '../src/db.mjs';
+import { batchUpsertTimeUsage } from '../src/db-batch.mjs';
 import { startServer, event, usage } from './helpers/server.mjs';
 import { serverAccess } from '../src/http-security.mjs';
 
 const range = 'start=2026-09-01T00:00:00.000Z&end=2026-09-02T00:00:00.000Z';
+
+test('HTTP: compressed immutable assets, conditional requests, HEAD and HTML revalidation', async () => {
+  const app = await startServer({ DASHBOARD_TOKEN: 'cache-reader' });
+  const headers = { authorization: 'Bearer cache-reader' };
+  try {
+    const contents = 'export const sample = "' + 'compressible'.repeat(1000) + '";';
+    await writeFile(join(app.root, 'public', 'assets', 'app-12345678.js'), contents);
+    const path = app.base + '/assets/app-12345678.js';
+    const compressed = await fetch(path, { headers: { ...headers, 'accept-encoding': 'gzip' } });
+    assert.equal(compressed.headers.get('content-encoding'), 'gzip');
+    assert.match(compressed.headers.get('cache-control'), /private.*immutable/);
+    assert.equal(compressed.headers.get('vary'), 'Accept-Encoding');
+    assert.equal(await compressed.text(), contents);
+    const conditional = { ...headers, 'if-none-match': compressed.headers.get('etag') };
+    assert.equal((await fetch(path, { headers: conditional })).status, 304);
+    assert.equal((await fetch(path, { headers: { 'if-none-match': conditional['if-none-match'] } })).status, 401, 'authentication precedes cache validation');
+    const head = await fetch(path, { method: 'HEAD', headers: { ...headers, 'accept-encoding': 'gzip;q=0, *;q=1' } });
+    assert.equal(head.headers.get('content-encoding'), null); assert.equal(await head.text(), '');
+    assert.equal(Number(head.headers.get('content-length')), Buffer.byteLength(contents));
+    const page = await fetch(app.base, { headers });
+    assert.match(page.headers.get('cache-control'), /no-cache/);
+    const oldTag = page.headers.get('etag'); await page.text();
+    await writeFile(join(app.root, 'public', 'index.html'), '<title>Updated build</title>');
+    assert.equal((await fetch(app.base, { headers: { ...headers, 'if-none-match': oldTag } })).status, 200);
+  } finally { await app.close(); }
+});
+
+test('HTTP: hourly cache observes transactional writes from another database connection', async () => {
+  const app = await startServer();
+  const db = await openDb(join(app.root, 'usage.sqlite'));
+  try {
+    const read = async () => (await (await fetch(app.base + '/api/hourly')).json()).hourly;
+    assert.deepEqual(await read(), []); assert.deepEqual(await read(), []);
+    await batchUpsertTimeUsage(db, [event()]);
+    assert.equal((await read())[0].totalTokens, 110);
+    await batchUpsertTimeUsage(db, [event({ inputTokens: 210, totalTokens: 220 })]);
+    assert.equal((await read())[0].totalTokens, 220);
+  } finally { await db.close(); await app.close(); }
+});
 
 test('HTTP: static directories return 404 and leave the server alive', async () => {
   const app = await startServer();
@@ -19,6 +62,9 @@ test('HTTP: read and write authentication, local origin checks, and remote start
   assert.throws(() => serverAccess({ HOST: '0.0.0.0' }), /requires/);
   const app = await startServer({ INGEST_TOKEN: 'writer-secret', DASHBOARD_TOKEN: 'reader-secret' });
   try {
+    assert.equal((await fetch(app.base + '/api/config')).status, 401);
+    const config = await fetch(app.base + '/api/config', { headers: { authorization: 'Bearer reader-secret' } });
+    assert.deepEqual(await config.json(), { displayTimeZone: 'Asia/Shanghai' });
     assert.equal((await fetch(app.base + '/api/data')).status, 401);
     assert.equal((await fetch(app.base + '/')).status, 401);
     assert.equal((await fetch(app.base + '/api/data', { headers: { authorization: 'Bearer writer-secret' } })).status, 401);
