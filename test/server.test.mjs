@@ -95,6 +95,10 @@ test('HTTP: reject malformed usage before mutation; full replacements require ex
     assert.equal(response.status, 200);
     assert.equal((await (await fetch(app.base + '/api/data')).json()).daily.length, 0);
     assert.equal((await (await fetch(app.base + `/api/time?${range}`)).json()).time.length, 0);
+    const scopes = [{ device: 'a::b', source: 'c' }, { device: 'a', source: 'b::c' }];
+    assert.equal((await app.ingest({ daily: scopes.map(scope => usage(scope)) })).status, 200);
+    assert.equal((await app.ingest({ mode: 'full', scopes, daily: [], time: [], sessions: [] })).status, 200);
+    assert.equal((await (await fetch(app.base + '/api/data')).json()).daily.length, 0, 'scope identities containing delimiters must remain distinct');
   } finally { await app.close(); }
 });
 

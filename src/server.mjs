@@ -329,7 +329,7 @@ async function handleIngest(req, res) {
     const timePairs = new Map();
     if (fullRebuild) {
       for (const row of payload.scopes) {
-        if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
+        if (row.device && row.source) timePairs.set(JSON.stringify([row.device, row.source]), row);
       }
     }
 
