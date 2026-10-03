@@ -7,11 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 
 let runtimePromise;
 function loadRuntime() {
-  runtimePromise ||= import('./chart-runtime.js').catch(error => {
-    runtimePromise = null;
-    throw error;
-  });
-  return runtimePromise;
+  return runtimePromise ||= import('./chart-runtime.js');
 }
 
 export function EChart({ option, height = 320, onEvents }) {
@@ -20,7 +16,6 @@ export function EChart({ option, height = 320, onEvents }) {
   const [visible, setVisible] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
-  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!('IntersectionObserver' in window)) {
@@ -64,7 +59,7 @@ export function EChart({ option, height = 320, onEvents }) {
       chart?.dispose();
       chartRef.current = null;
     };
-  }, [visible, attempt]);
+  }, [visible]);
 
   useEffect(() => {
     if (chartRef.current) chartRef.current.setOption(option, true);
@@ -82,7 +77,8 @@ export function EChart({ option, height = 320, onEvents }) {
   return <div style={{ position: 'relative', width: '100%', height }} aria-busy={!ready && !error}>
     <div ref={ref} style={{ width: '100%', height: '100%' }} />
     {!ready && <div role="status" style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center', color: 'var(--muted)', fontSize: 12 }}>
-      {error ? <button className="btn" onClick={() => setAttempt(value => value + 1)}>图表加载失败，点击重试</button> : '图表加载中…'}
+      {/* Browsers cache failed module imports; a fresh page clears that failure. */}
+      {error ? <button className="btn" onClick={() => window.location.reload()}>图表加载失败，重新加载页面</button> : '图表加载中…'}
     </div>}
   </div>;
 }

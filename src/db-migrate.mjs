@@ -5,6 +5,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { defaultDbPath, openDb, pruneCollectionRuns } from './db.mjs';
+import { TABLES, fromStored } from './db-batch.mjs';
+import { recordUsageChanges } from './sync-journal.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const sourcePath = resolve(args.from || process.env.DB_PATH || defaultDbPath);
@@ -116,6 +118,8 @@ async function bulkUpsert(db, config, rows, batchSize = 250) {
         ? `ON DUPLICATE KEY UPDATE ${mutable.map(column => `${column} = VALUES(${column})`).join(', ')}`
         : `ON CONFLICT (${config.key.join(', ')}) DO UPDATE SET ${mutable.map(column => `${column} = excluded.${column}`).join(', ')}`;
       await tx.run(`INSERT INTO ${config.table} (${columns.join(', ')}) VALUES ${placeholders} ${conflict}`, values);
+      const kind = Object.keys(TABLES).find(kind => TABLES[kind].table === config.table);
+      await recordUsageChanges(tx, kind, batch.map(row => fromStored(kind, row)), TABLES[kind]);
     });
   }
 }

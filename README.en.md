@@ -105,6 +105,8 @@ Use `npm run --silent doctor -- --json` for a shareable report (no connection st
 
 Contributors can run `npm run test:onboarding` to verify the build, first/repeated collection, and pages/APIs with synthetic logs and a temporary database. It does not collect personal logs. CI runs this flow on macOS, Linux, and Windows.
 
+For browser regression checks, run `npx playwright install chromium` once, then `npm run test:browser`. Synthetic usage covers timezone boundaries, pagination, exports, retries and mobile layouts. CI runs this on Linux.
+
 ### Shared multi-device database
 
 The project supports SQLite, PostgreSQL (including Supabase), and MySQL. Copy `.env.example` to an untracked `.env` and configure one shared connection:
@@ -249,7 +251,7 @@ Notes:
 | `DB_PATH` | `data/usage.sqlite` | SQLite database path |
 | `DB_POOL_SIZE` | `10` | PostgreSQL/MySQL connection pool size |
 | `DB_CONNECT_TIMEOUT_MS` | `10000` | Remote database connection timeout in milliseconds |
-| `DISPLAY_TZ` | Host timezone | IANA timezone for collection dates and hourly charts; set explicitly on UTC hosts. Keep it consistent across collectors and hub |
+| `DISPLAY_TZ` | Host timezone | IANA timezone for collection dates, browser filters, timestamps and hourly charts. Browsers use the server setting. Keep collectors and hub consistent; existing daily totals are not rebuilt when this changes |
 | `DASHBOARD_TOKEN` | _(unset)_ | Dashboard and read API password, falling back to `INGEST_TOKEN` |
 | `INGEST_TOKEN` | _(unset)_ | Upload token, falling back to `DASHBOARD_TOKEN`. Without either token, only loopback binding is allowed |
 | `SCHEDULED_COLLECT_ENABLED` | `false` | Enable the built-in scheduled collector |

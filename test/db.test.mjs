@@ -131,6 +131,14 @@ test('MySQL upserts bind every placeholder and use duplicate-key updates', async
   const calls = [];
   const db = {
     driver: 'mysql',
+    async all(sql, params = []) {
+      assert.equal((sql.match(/\?/g) || []).length, params.length);
+      return [];
+    },
+    async get(sql, params = []) {
+      assert.equal((sql.match(/\?/g) || []).length, params.length);
+      return { revision: 1 };
+    },
     async run(sql, params = []) {
       assert.equal((sql.match(/\?/g) || []).length, params.length);
       calls.push({ sql, params });

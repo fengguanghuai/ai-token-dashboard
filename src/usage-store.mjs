@@ -1,6 +1,7 @@
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage, fromStored, TABLES, tokenFields } from './db-batch.mjs';
 import { calculateCost, hasModelPricing } from './pricing.mjs';
 import { invalidateCollectionState, saveCollectionState } from './collection-state.mjs';
+import { resetUsageChanges, exactColumn } from './sync-journal.mjs';
 
 const keyFields = Object.fromEntries(Object.entries(TABLES).map(([kind, table]) =>
   [kind, table.keys.map(column => table.fields.find(([c]) => c === column)[1])]
@@ -23,7 +24,7 @@ const group = rows => {
 
 export async function readSnapshot(db, device, source) {
   const params = device ? [device, ...(source ? [source] : [])] : [];
-  const where = device ? ` WHERE device = ?${source ? ' AND source = ?' : ''}` : '';
+  const where = device ? ` WHERE ${exactColumn(db, 'device')} = ?${source ? ` AND ${exactColumn(db, 'source')} = ?` : ''}` : '';
   const result = {};
   for (const [kind, { table }] of Object.entries(TABLES)) {
     result[kind] = (await db.all(`SELECT * FROM ${table}${where}`, params)).map(row => fromStored(kind, row));
@@ -114,8 +115,9 @@ export async function writeSnapshot(db, snapshot, { scopes = [], full = false, p
     // Acquire all scope locks in a consistent order before touching any table.
     await invalidateCollectionState(tx, [...scopes, ...snapshot.daily, ...snapshot.time, ...snapshot.sessions]);
     if (full) for (const { device, source } of scopes) for (const { table } of Object.values(TABLES)) {
-      await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [device, source]);
+      await tx.run(`DELETE FROM ${table} WHERE ${exactColumn(tx, 'device')} = ? AND ${exactColumn(tx, 'source')} = ?`, [device, source]);
     }
+    if (full) await resetUsageChanges(tx, scopes);
     for (const [kind, write] of [['daily', batchUpsertDaily], ['time', batchUpsertTimeUsage], ['sessions', batchUpsertSession]]) {
       const old = new Map((previous?.[kind] || []).map(row => [rowKey(kind, row), row]));
       const fields = TABLES[kind].fields.filter(([, key]) => key !== 'pricingLockedAt');

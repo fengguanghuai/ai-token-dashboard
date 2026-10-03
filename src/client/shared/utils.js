@@ -2,6 +2,8 @@
    Shared helpers, formatters, and aggregations
    ============================================================= */
 
+import { displayDateTime, displayTimeMs } from './display-time.js';
+
 const PALETTE = {
   // Claude family → indigo
   'Claude Code':        'oklch(0.55 0.16 265)',
@@ -87,19 +89,15 @@ function formatTs(v) {
   const value = new Date(hasZone ? normalized : `${normalized}Z`);
   if (Number.isNaN(value.getTime())) return text.replace('T', ' ').slice(0, 16);
 
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(value);
-  const get = type => parts.find(part => part.type === type)?.value || '';
-  return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
+  return displayDateTime(value).slice(0, 16).replace('T', ' ');
 }
 
 function localDateStr(date) {
+  return displayDateTime(date).slice(0, 10);
+}
+
+// Calendar arithmetic operates on civil dates, not timezone-bearing instants.
+function calendarDateStr(date) {
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, '0'),
@@ -113,54 +111,38 @@ function parseLocalDate(value) {
 }
 
 function daysAgo(n) {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - n);
-  return localDateStr(d);
+  return addDays(localDateStr(new Date()), -n);
 }
 
 function toDateTimeLocalValue(date) {
-  return [
-    localDateStr(date),
-    [
-      String(date.getHours()).padStart(2, '0'),
-      String(date.getMinutes()).padStart(2, '0')
-    ].join(':')
-  ].join('T');
+  return displayDateTime(date).slice(0, 16);
 }
 
 function startOfDayLocal(dateStr) {
-  const d = parseLocalDate(dateStr);
-  d.setHours(0, 0, 0, 0);
-  return toDateTimeLocalValue(d);
+  return `${dateStr}T00:00`;
 }
 
 function endOfDayLocal(dateStr) {
-  const d = parseLocalDate(dateStr);
-  d.setHours(23, 59, 0, 0);
-  return toDateTimeLocalValue(d);
+  return `${dateStr}T23:59`;
 }
 
 function timestampMs(value) {
   if (!value) return null;
-  const text = String(value);
-  const normalized = text.includes('T') ? text : text.replace(' ', 'T');
-  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-  const ms = new Date(hasZone ? normalized : normalized).getTime();
+  const ms = displayTimeMs(value);
   return Number.isNaN(ms) ? null : ms;
 }
 
 function addDays(dateStr, days) {
   const d = parseLocalDate(dateStr);
   d.setDate(d.getDate() + days);
-  return localDateStr(d);
+  return calendarDateStr(d);
 }
 
 function rangeDates(startStr, endStr) {
   const out = [];
   const s = parseLocalDate(startStr), e = parseLocalDate(endStr);
   for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-    out.push(localDateStr(d));
+    out.push(calendarDateStr(d));
   }
   return out;
 }
@@ -314,7 +296,7 @@ export const U = {
   PALETTE, PALETTE_FALLBACK, getSourceColor, sortSources,
   fmt, fmtUS, fmtUS4,
   compact, compactCN, pct, deltaPct, formatTs,
-  localDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,
+  localDateStr, calendarDateStr, toDateTimeLocalValue, startOfDayLocal, endOfDayLocal, daysAgo, addDays, rangeDates,
   filterDaily, filterTime, sourceOptions, usageShare, aggregateTotals, groupByDate, uniqueValues,
   downloadCSV, projectLabel, alpha
 };

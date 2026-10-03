@@ -3,11 +3,12 @@ import { createReadStream, existsSync, statSync, realpathSync } from 'node:fs';
 import { pipeline } from 'node:stream';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createGzip } from 'node:zlib';
 import { extname, join, resolve, sep } from 'node:path';
 import { URL } from 'node:url';
 import {
   openDb,
-  pruneCollectionRuns, recordRun
+  pruneCollectionRuns, recordRun, resolveDisplayTz
 } from './db.mjs';
 import { batchUpsertDaily, batchUpsertSession, batchUpsertTimeUsage } from './db-batch.mjs';
 import { loadCollectorConfig } from './collector-config.mjs';
@@ -15,11 +16,13 @@ import { loadPricing, hasModelPricing, pricingSnapshotTime } from './pricing.mjs
 import { queryQuota } from './quota.mjs';
 import { authorize, isLoopback, serverAccess, trustedRequest } from './http-security.mjs';
 import { validateIngest } from './ingest-validation.mjs';
-import { queryDaily, queryTime, queryTimeSummary, queryUsageMetadata, queryHourly } from './usage-query.mjs';
+import { queryDaily, queryTime, queryTimeSummary, queryUsageMetadata, queryHourly, dateWhere } from './usage-query.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
 import { streamUsageCsv } from './usage-export.mjs';
 import { listenError } from './listen-error.mjs';
+import { resetUsageChanges, exactColumn } from './sync-journal.mjs';
+import { requestCache } from './request-cache.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
 // (to the vendors' usage endpoints, using the OAuth token the CLIs stored
@@ -28,7 +31,11 @@ import { listenError } from './listen-error.mjs';
 const quotaEnabled = String(process.env.SUBSCRIPTION_QUOTA_ENABLED ?? 'true').toLowerCase() !== 'false';
 const QUOTA_TTL_MS = 60_000;       // cache a good result this long
 const QUOTA_ERROR_TTL_MS = 10_000; // but recover quickly after a transient error
-let quotaCache = { until: 0, data: null };
+const quotaCache = requestCache({ maxEntries: 1, ttl: data => ['claude', 'codex'].some(k => {
+  const quota = data[k];
+  return quota && !quota.ok && quota.status !== 'no_credentials';
+}) ? QUOTA_ERROR_TTL_MS : QUOTA_TTL_MS });
+const hourlyCache = requestCache({ ttl: 10_000, cacheable: data => data.hourly.length <= 5000 });
 
 const port = Number(process.env.PORT || 4173);
 const access = serverAccess();
@@ -68,7 +75,7 @@ async function handleRequest(req, res) {
     await handleApi(req, url, res);
     return;
   }
-  serveStatic(url.pathname, res);
+  serveStatic(req, url.pathname, res);
 }
 
 server.on('error', async error => {
@@ -82,6 +89,10 @@ server.listen(port, access.host, () => {
 });
 
 async function handleApi(req, url, res) {
+  if (url.pathname === '/api/config') {
+    sendJson(res, { displayTimeZone: resolveDisplayTz() });
+    return;
+  }
   if (url.pathname === '/api/export.csv') {
     if (req.method !== 'GET') { sendJson(res, { error: 'Method not allowed' }, 405); return; }
     try { await streamUsageCsv(db, url.searchParams, res, pricingData); }
@@ -133,7 +144,12 @@ async function handleApi(req, url, res) {
     return;
   }
   if (url.pathname === '/api/hourly') {
-    try { sendJson(res, await queryHourly(db, url.searchParams)); }
+    try {
+      dateWhere(url.searchParams);
+      const versions = await db.all('SELECT scope_key, revision FROM sync_scopes ORDER BY scope_key');
+      const key = JSON.stringify([resolveDisplayTz(), url.searchParams.get('startDate'), url.searchParams.get('endDate'), versions]);
+      sendJson(res, await hourlyCache.get(key, () => queryHourly(db, url.searchParams)));
+    }
     catch (error) { sendJson(res, { error: error.message }, 400); }
     return;
   }
@@ -287,19 +303,8 @@ async function handleQuota(res) {
     sendJson(res, { disabled: true });
     return;
   }
-  const now = Date.now();
-  if (quotaCache.data && now < quotaCache.until) {
-    sendJson(res, quotaCache.data);
-    return;
-  }
   try {
-    const data = await queryQuota();
-    const failed = ['claude', 'codex'].some(k => {
-      const q = data[k];
-      return q && !q.ok && q.status !== 'no_credentials';
-    });
-    quotaCache = { until: now + (failed ? QUOTA_ERROR_TTL_MS : QUOTA_TTL_MS), data };
-    sendJson(res, data);
+    sendJson(res, await quotaCache.get('quota', queryQuota));
   } catch (error) {
     sendJson(res, { error: error.message }, 500);
   }
@@ -324,7 +329,7 @@ async function handleIngest(req, res) {
     const timePairs = new Map();
     if (fullRebuild) {
       for (const row of payload.scopes) {
-        if (row.device && row.source) timePairs.set(`${row.device}::${row.source}`, row);
+        if (row.device && row.source) timePairs.set(JSON.stringify([row.device, row.source]), row);
       }
     }
 
@@ -332,9 +337,10 @@ async function handleIngest(req, res) {
       await invalidateCollectionState(tx, [...(fullRebuild ? payload.scopes : []), ...dailyRows, ...timeRows, ...sessionRows]);
       for (const row of timePairs.values()) {
         for (const table of ['daily_usage', 'time_usage', 'session_usage']) {
-          await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [row.device, row.source]);
+          await tx.run(`DELETE FROM ${table} WHERE ${exactColumn(tx, 'device')} = ? AND ${exactColumn(tx, 'source')} = ?`, [row.device, row.source]);
         }
       }
+      if (fullRebuild) await resetUsageChanges(tx, payload.scopes);
       await batchUpsertDaily(tx, dailyRows);
       await batchUpsertTimeUsage(tx, timeRows);
       await batchUpsertSession(tx, sessionRows);
@@ -350,7 +356,8 @@ async function handleIngest(req, res) {
   }
 }
 
-function serveStatic(pathname, res) {
+function serveStatic(req, pathname, res) {
+  if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405, { allow: 'GET, HEAD' }); res.end(); return; }
   let decoded;
   try {
     decoded = decodeURIComponent(pathname);
@@ -368,14 +375,32 @@ function serveStatic(pathname, res) {
     res.end('Not found');
     return;
   }
+  let realPath, info;
   try {
-    const realPath = realpathSync(filePath);
-    if (!statSync(realPath).isFile() || !realPath.startsWith(realpathSync(staticDir) + sep)) {
+    realPath = realpathSync(filePath);
+    info = statSync(realPath);
+    if (!info.isFile() || !realPath.startsWith(realpathSync(staticDir) + sep)) {
       res.writeHead(404); res.end('Not found'); return;
     }
   } catch { res.writeHead(404); res.end('Not found'); return; }
-  res.writeHead(200, { 'content-type': contentType(filePath), 'x-content-type-options': 'nosniff' });
-  pipeline(createReadStream(filePath), res, () => { /* handles disconnects and read errors */ });
+  const type = contentType(filePath);
+  const etag = `W/"${info.size.toString(16)}-${info.mtimeMs.toString(16)}"`;
+  const encodings = new Map(String(req.headers['accept-encoding'] || '').split(',').map(entry => {
+    const [name, ...params] = entry.trim().split(';');
+    const quality = params.find(value => /^\s*q=/i.test(value));
+    return [name.trim().toLowerCase(), quality ? Number(quality.split('=')[1]) : 1];
+  }));
+  const gzip = info.size >= 1024 && /^(text\/|application\/(javascript|json)|image\/svg)/.test(type)
+    && (encodings.get('gzip') ?? encodings.get('*') ?? 0) > 0;
+  const headers = { 'content-type': type, 'x-content-type-options': 'nosniff', etag,
+    'cache-control': /^\/assets\/.+-[\w-]{8,}\.[\w]+$/.test(decoded) ? 'private, max-age=31536000, immutable' : 'private, no-cache',
+    vary: 'Accept-Encoding', ...(gzip ? { 'content-encoding': 'gzip' } : {}) };
+  if (String(req.headers['if-none-match'] || '').split(',').some(value => value.trim() === '*' || value.trim().replace(/^W\//, '') === etag.slice(2))) {
+    res.writeHead(304, headers); res.end(); return;
+  }
+  res.writeHead(200, { ...headers, ...(!gzip ? { 'content-length': info.size } : {}) });
+  if (req.method === 'HEAD') { res.end(); return; }
+  pipeline(createReadStream(realPath), ...(gzip ? [createGzip()] : []), res, () => { /* handles disconnects and read errors */ });
 }
 
 function all(sql, params) {

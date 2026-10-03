@@ -4,6 +4,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { U } from '../shared/utils.js';
+import { displayTimeZone } from '../shared/display-time.js';
 import { fetchDailyRange, dailyRangeForFilters } from '../shared/usage-data.js';
 import { useRangeQuery } from '../shared/use-range-query.js';
 import { RU } from './utils.js';
@@ -226,7 +227,7 @@ function ReviewDashboard({ rawData, period, periodId, setPeriodId, queryState })
               </svg>
               {prevId ? RU.PERIOD_LABELS[prevId] : '更早'}
             </button>
-            <div className="period-current">{period.pretty}</div>
+            <div className="period-current">{period.pretty} · {displayTimeZone()}</div>
             <button disabled={!nextId} onClick={() => nextId && setPeriodId(nextId)}>
               {nextId ? RU.PERIOD_LABELS[nextId] : '更晚'}
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none">

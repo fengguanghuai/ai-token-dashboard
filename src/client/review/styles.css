@@ -974,6 +974,10 @@ section.story:last-of-type  { padding-bottom: 56px; }
 
 /* responsive */
 @media (max-width: 720px) {
+  .review-nav-inner { flex-wrap: wrap; padding: 12px 22px; }
+  .period-switch { flex-wrap: wrap; max-width: 100%; }
+  .period-jump { flex-wrap: wrap; justify-content: center; width: 100%; }
+  .period-current { order: -1; flex-basis: 100%; min-width: 0; }
   .stat-strip   { grid-template-columns: repeat(2, 1fr); }
   .eff-grid     { grid-template-columns: 1fr; }
   .tools-split  { grid-template-columns: 1fr; gap: 32px; }

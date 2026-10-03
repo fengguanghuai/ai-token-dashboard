@@ -13,12 +13,14 @@ import { usage, event } from './helpers/server.mjs';
 import { applyCollectionDelta } from '../src/collection-delta.mjs';
 import { invalidateCollectionState } from '../src/collection-state.mjs';
 import { checkDatabase } from '../src/doctor-checks.mjs';
+import { exerciseSyncJournal } from './helpers/sync.mjs';
 
 for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', 'TEST_MYSQL_URL']]) {
   test(`${name}: schema upgrades, exact upserts, project query, pagination and timezone`, { skip: !process.env[variable] }, async () => {
     const db = await openDb({ url: process.env[variable] });
     const device = `test-${randomUUID()}`;
     try {
+      await exerciseSyncJournal(db, device + '-sync');
       const snapshot = { daily: [usage({ device, costBasis: 'mixed', pricingVersion: '2026-09-25T00:00:00Z' })],
         time: [event({ device }), event({ device, eventKey: 'b', projectPath: '/project/a' })], sessions: [] };
       await writeSnapshot(db, snapshot);

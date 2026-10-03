@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { resolveDisplayTz, zonedParts } from './timezone.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
+import { initSyncJournal, resetUsageChanges, exactColumn } from './sync-journal.mjs';
 export { resolveDisplayTz } from './timezone.mjs';
 
 export const defaultDbPath = resolve(process.cwd(), 'data', 'usage.sqlite');
@@ -71,7 +72,16 @@ function openSqlite(path, readOnly = false) {
   client.function('display_hour', { deterministic: true }, (value, tz) => zonedParts(value, tz)?.hour ?? null);
   client.function('display_date', { deterministic: true }, (value, tz) => zonedParts(value, tz)?.date ?? null);
 
-  const db = {
+  // Serialize the shared SQLite connection, including reads outside a
+  // transaction, so concurrent syncs cannot enter or observe another writer's
+  // uncommitted transaction. Nested work uses the direct transaction adapter.
+  let pending = Promise.resolve();
+  const enqueue = work => {
+    const result = pending.then(work);
+    pending = result.catch(() => {});
+    return result;
+  };
+  const direct = {
     driver: 'sqlite',
     config: { path },
     async exec(sql) { client.exec(sql); },
@@ -81,7 +91,7 @@ function openSqlite(path, readOnly = false) {
     async transaction(work) {
       client.exec('BEGIN IMMEDIATE');
       try {
-        const tx = { ...db, transaction: nested => nested(tx) };
+        const tx = { ...direct, transaction: nested => nested(tx) };
         const value = await work(tx);
         client.exec('COMMIT');
         return value;
@@ -92,7 +102,8 @@ function openSqlite(path, readOnly = false) {
     },
     async close() { client.close(); }
   };
-  return db;
+  return { ...direct, ...Object.fromEntries(['exec', 'all', 'get', 'run', 'transaction', 'close']
+    .map(name => [name, (...args) => enqueue(() => direct[name](...args))])) };
 }
 
 async function openPostgres(url) {
@@ -250,6 +261,7 @@ async function initSchema(db) {
     WHERE pricing_locked_at IS NULL AND usage_date < ${today}
   `);
   await pruneCollectionRuns(db);
+  await initSyncJournal(db);
 }
 
 function splitStatements(sql) {
@@ -325,7 +337,8 @@ export async function upsertTimeUsage(db, row) {
 export async function deleteTimeUsageForSource(db, device, source) {
   await db.transaction(async tx => {
     await invalidateCollectionState(tx, [{ device, source }]);
-    await tx.run('DELETE FROM time_usage WHERE device = ? AND source = ?', [device, source]);
+    await tx.run(`DELETE FROM time_usage WHERE ${exactColumn(tx, 'device')} = ? AND ${exactColumn(tx, 'source')} = ?`, [device, source]);
+    await resetUsageChanges(tx, [{ device, source }]);
   });
 }
 

@@ -3,6 +3,23 @@ CREATE TABLE IF NOT EXISTS collection_checkpoints (
   state_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sync_meta (id INTEGER PRIMARY KEY, version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS sync_scopes (
+  scope_key VARCHAR(64) PRIMARY KEY, device TEXT NOT NULL, source TEXT NOT NULL,
+  revision BIGINT NOT NULL, reset_revision BIGINT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_changes (
+  scope_key VARCHAR(64) NOT NULL, row_key VARCHAR(64) NOT NULL,
+  revision BIGINT NOT NULL, kind VARCHAR(16) NOT NULL, payload_json TEXT NOT NULL,
+  PRIMARY KEY (scope_key, row_key)
+);
+CREATE INDEX IF NOT EXISTS idx_sync_changes_revision ON sync_changes(scope_key, revision);
+CREATE TABLE IF NOT EXISTS sync_targets (
+  target_key VARCHAR(64) PRIMARY KEY, scope_key VARCHAR(64) NOT NULL,
+  acknowledged_revision BIGINT, lease_owner VARCHAR(64), lease_until BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sync_targets_scope ON sync_targets(scope_key);
+
 CREATE TABLE IF NOT EXISTS collection_runs (
   id BIGSERIAL PRIMARY KEY,
   device TEXT NOT NULL,

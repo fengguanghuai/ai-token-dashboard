@@ -7,6 +7,7 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/r
 import { AnimatedNumber } from './AnimatedNumber.jsx';
 import { UsageNotes, InfoButton } from './UsageNotes.jsx';
 import { U } from '../shared/utils.js';
+import { displayTimeZone } from '../shared/display-time.js';
 import { ThemeToggle } from '../shared/ThemeToggle.jsx';
 import { quotaWindowLabel, orderQuotaWindows } from '../shared/quota.js';
 import tokenStudioFlow from '../assets/token-studio-flow.png';
@@ -53,22 +54,19 @@ function quotaResetAbs(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return '—';
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return U.formatTs(iso).slice(5);
 }
 
 function quotaDateOnly(iso) {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return null;
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return U.localDateStr(d);
 }
 
 function quotaDateTime(iso) {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return null;
-  const p = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return U.formatTs(iso);
 }
 
 // Build the labelled rows shown in the click-to-expand detail panel.
@@ -286,7 +284,7 @@ function FilterBar({ f, setF, allSources, sourceOptions, allDevices, allModels, 
       <div className="filterbar-main">
       <div className="filter-row filter-row-primary">
         <div className="filter-group">
-          <span className="filter-label">时间</span>
+          <span className="filter-label" title={displayTimeZone()}>时间（{displayTimeZone()}）</span>
           <LayoutGroup id="usage-date-range">
           <div className="chip-row motion-chip-row">
             {RANGES.map(r => (
@@ -485,7 +483,7 @@ function monthCells(monthDate) {
   return Array.from({ length: 42 }, (_, i) => {
     const date = new Date(start);
     date.setDate(start.getDate() + i);
-    const value = U.localDateStr(date);
+    const value = U.calendarDateStr(date);
     return {
       date,
       value,
