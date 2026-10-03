@@ -1,6 +1,7 @@
 import { mysqlRowKey, nowExpression } from './db.mjs';
 import { zonedParts } from './timezone.mjs';
 import { invalidateCollectionState } from './collection-state.mjs';
+import { recordUsageChanges } from './sync-journal.mjs';
 
 export const tokenFields = ['inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'reasoningOutputTokens', 'totalTokens'];
 const tokenColumns = ['input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens', 'reasoning_output_tokens', 'total_tokens'];
@@ -38,7 +39,21 @@ async function writeRows(db, kind, rows) {
   const mutable = columns.filter(column => !keys.includes(column));
   const mysql = db.driver === 'mysql';
   for (let start = 0; start < rows.length; start += 400) {
-    const part = rows.slice(start, start + 400);
+    const identity = row => keys.map(column => {
+      const [, name, fallback] = fields.find(([field]) => field === column);
+      return row[name] ?? fallback;
+    });
+    const candidates = [...new Map(rows.slice(start, start + 400).map(row => [JSON.stringify(identity(row)), row])).values()];
+    const keyColumns = mysql ? ['row_key'] : keys;
+    const stored = await db.all(`SELECT ${columns.join(', ')} FROM ${table} WHERE (${keyColumns.join(', ')}) IN
+      (${candidates.map(() => `(${keyColumns.map(() => '?').join(', ')})`).join(', ')})`,
+    candidates.flatMap(row => mysql ? [mysqlRowKey(...identity(row))] : identity(row)));
+    const previous = new Map(stored.map(row => [JSON.stringify(identity(fromStored(kind, row))), row]));
+    const part = candidates.filter(row => {
+      const old = previous.get(JSON.stringify(identity(row)));
+      return !old || fields.some(([column, name, fallback]) => name !== 'pricingLockedAt' && (row[name] ?? fallback) !== old[column]);
+    });
+    if (!part.length) continue; // Retried ingests must not generate new changes.
     const names = [...(mysql ? ['row_key'] : []), ...columns, 'updated_at'];
     const group = `(${Array(names.length - 1).fill('?').join(', ')}, ${nowExpression(db.driver)})`;
     const update = mutable.map(column => `${column} = ${mysql ? `VALUES(${column})` : `excluded.${column}`}`);
@@ -50,6 +65,7 @@ async function writeRows(db, kind, rows) {
       if (!mysql) return values;
       return [mysqlRowKey(...keys.map(key => values[columns.indexOf(key)])), ...values];
     }));
+    await recordUsageChanges(db, kind, part, TABLES[kind]);
   }
 }
 

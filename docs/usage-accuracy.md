@@ -102,20 +102,38 @@ left unknown; the command no longer estimates historical totals at today's rate.
 
 ## Synchronization
 
-The first `--push` sends all locally stored history. Subsequent pushes compare
-row content against destination/device-specific acknowledgments under
-`data/sync-state/`. Late records and older corrections are included. A failed
-chunk does not advance the manifest, so retrying the same command is safe.
-Changing the destination starts a separate manifest. Uploads require the current
-hub version; upgrade the hub before upgrading collectors.
+The first `--push` sends a baseline of locally stored history. Later pushes read
+transactional change records in `sync_changes`, not a full usage snapshot or
+per-row history manifest. Progress in `sync_targets` is isolated by destination,
+device and source, and advances only after every chunk for that scope is
+acknowledged. A failed chunk or lost response leaves that scope retryable;
+replayed upserts do not duplicate usage or generate another change revision.
+
+Usage writes and change records commit together across collection, HTTP ingest,
+migration, pricing repair and restore. Repeated edits retain only the newest
+pending value per row. Acknowledged records are pruned only through the slowest
+registered target; a new destination gets a baseline even after pruning. Source
+locks bind baseline/change capture to one committed revision, and network calls
+never hold a database transaction open. Concurrent uploads to the same target,
+device and source are rejected; a crashed sender's lease expires after two
+minutes, and ordinary failures release it immediately.
 
 An applied `--full --push <url>` replaces each explicitly collected scope on the
-hub, including an explicitly empty scope. Replacement payloads are atomic per
-source and limited to 48 MiB; an oversized source fails instead of partially
-replacing it. Keep backups on both sides before replacing remote history. If a
-hub database is reset behind the same URL, remove the local acknowledgment file
-(or the `data/sync-state/` directory) and push again to resend local history.
-Avoid simultaneous collectors writing the same device/source.
+hub, including an explicitly empty scope. A later ordinary push also carries
+an earlier explicit local replacement to any target still behind that reset.
+Replacement payloads remain atomic per source and limited to 48 MiB. Keep
+backups on both sides before replacing remote history.
+
+If a hub database is reset behind the same URL, add `--resync` to the normal
+`collect --push <url>` command to resend the stored baseline. `--resync` alone
+does not request deletion. It must be used with `--push`; use `--full --apply`
+only when intentionally rebuilding/replacing a source.
+
+Upgrade all programs writing the same database together: old binaries and raw
+SQL edits do not maintain the journal. The first upgraded push ignores the old
+`data/sync-state/` manifest and safely resends a baseline. That directory is no
+longer used. Database initialization discovers old source identities once with
+a transactional migration marker; it does not recalculate historical fees.
 
 ## HTTP contracts
 

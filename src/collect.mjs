@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { backupSnapshot } from './usage-backup.mjs';
 import { openDb, recordRun } from './db.mjs';
 import { readSnapshot, reconcileSnapshot, snapshotDiff, writeSnapshot } from './usage-store.mjs';
-import { syncSnapshot } from './sync.mjs';
+import { syncDatabase } from './sync.mjs';
 import { applyCollectionDelta, collectionSignature } from './collection-delta.mjs';
 import { zonedParts } from './timezone.mjs';
 import { projectPath } from './project-identity.mjs';
@@ -40,9 +40,8 @@ const pricingData = await loadPricing(pricingCachePath);
 try {
   await collectLocal();
   if (args.push && !preview) {
-    const snapshot = await readSnapshot(db, device, args.source);
-    const result = await syncSnapshot({ url: args.push, token: args.token, device, snapshot,
-      stateDir: resolve(process.cwd(), 'data', 'sync-state'), full: Boolean(args.full), scopes: collection.scopes });
+    const result = await syncDatabase({ db, url: args.push, token: args.token, device, source: args.source,
+      full: Boolean(args.full), resync: Boolean(args.resync), scopes: collection.scopes });
     console.log(`[push] ${JSON.stringify(result)}`);
   }
 } finally { await db.close(); }
@@ -278,6 +277,7 @@ function parseArgs(argv) {
       parsed.token = argv[++i];
     } else if (arg === '--full') {
       parsed.full = true;
+    } else if (arg === '--resync') { parsed.resync = true;
     } else if (arg === '--apply') { parsed.apply = true;
     } else if (arg === '--dry-run') { parsed.dryRun = true;
     } else if (arg === '--source') { parsed.source = argv[++i];
@@ -285,6 +285,7 @@ function parseArgs(argv) {
     } else { throw new Error(`Unknown argument: ${arg}`); }
   }
   if (parsed.apply && !parsed.full) throw new Error('--apply requires --full');
+  if (parsed.resync && !parsed.push) throw new Error('--resync requires --push');
   for (const key of ['device', 'db', 'push', 'token', 'source']) {
     if (Object.hasOwn(parsed, key) && (!parsed[key] || parsed[key].startsWith('--'))) throw new Error(`Missing value for --${key}`);
   }

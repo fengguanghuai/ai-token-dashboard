@@ -3,6 +3,22 @@ CREATE TABLE IF NOT EXISTS collection_checkpoints (
   state_json MEDIUMTEXT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS sync_meta (id INTEGER PRIMARY KEY, version INTEGER NOT NULL) ENGINE=InnoDB;
+CREATE TABLE IF NOT EXISTS sync_scopes (
+  scope_key VARCHAR(64) PRIMARY KEY, device VARCHAR(255) NOT NULL, source VARCHAR(255) NOT NULL,
+  revision BIGINT NOT NULL, reset_revision BIGINT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS sync_changes (
+  scope_key VARCHAR(64) NOT NULL, row_key VARCHAR(64) NOT NULL,
+  revision BIGINT NOT NULL, kind VARCHAR(16) NOT NULL, payload_json MEDIUMTEXT NOT NULL,
+  PRIMARY KEY (scope_key, row_key), INDEX idx_sync_changes_revision (scope_key, revision)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+CREATE TABLE IF NOT EXISTS sync_targets (
+  target_key VARCHAR(64) PRIMARY KEY, scope_key VARCHAR(64) NOT NULL,
+  acknowledged_revision BIGINT, lease_owner VARCHAR(64), lease_until BIGINT NOT NULL DEFAULT 0,
+  INDEX idx_sync_targets_scope (scope_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 CREATE TABLE IF NOT EXISTS collection_runs (
   id BIGINT NOT NULL AUTO_INCREMENT,
   device VARCHAR(255) NOT NULL,

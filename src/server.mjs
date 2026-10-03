@@ -20,6 +20,7 @@ import { invalidateCollectionState } from './collection-state.mjs';
 import { collectionNotifications } from './collection-notifications.mjs';
 import { streamUsageCsv } from './usage-export.mjs';
 import { listenError } from './listen-error.mjs';
+import { resetUsageChanges, exactColumn } from './sync-journal.mjs';
 
 // Live subscription-window quota is the one feature that makes outbound calls
 // (to the vendors' usage endpoints, using the OAuth token the CLIs stored
@@ -332,9 +333,10 @@ async function handleIngest(req, res) {
       await invalidateCollectionState(tx, [...(fullRebuild ? payload.scopes : []), ...dailyRows, ...timeRows, ...sessionRows]);
       for (const row of timePairs.values()) {
         for (const table of ['daily_usage', 'time_usage', 'session_usage']) {
-          await tx.run(`DELETE FROM ${table} WHERE device = ? AND source = ?`, [row.device, row.source]);
+          await tx.run(`DELETE FROM ${table} WHERE ${exactColumn(tx, 'device')} = ? AND ${exactColumn(tx, 'source')} = ?`, [row.device, row.source]);
         }
       }
+      if (fullRebuild) await resetUsageChanges(tx, payload.scopes);
       await batchUpsertDaily(tx, dailyRows);
       await batchUpsertTimeUsage(tx, timeRows);
       await batchUpsertSession(tx, sessionRows);
