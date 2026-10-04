@@ -20,7 +20,9 @@
     "serve": "node src/server.mjs",
     "test": "node --test",
     "test:onboarding": "npm run build && node scripts/onboarding-smoke.mjs",
-    "test:browser": "npm run build && node scripts/browser-smoke.mjs"
+    "test:browser": "npm run build && node scripts/browser-smoke.mjs",
+    "test:release": "npm run test:onboarding && node scripts/upgrade-smoke.mjs",
+    "benchmark:query": "node scripts/query-benchmark.mjs"
   },
   "engines": {
     "node": ">=22.15.0"

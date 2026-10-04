@@ -1,6 +1,6 @@
 # 项目状态与后续工作
 
-更新日期：2026-10-04。增量同步及页面优化见 [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)；可选日志字节续读与固定快照导出见 [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31)。代码、验证与合并状态以对应 PR 为准，不代表已部署。
+更新日期：2026-10-04。增量同步及页面优化见 [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)；可选日志字节续读与固定快照导出见 [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31)；发布准备与合成查询基准见 [PR #32](https://github.com/fengguanghuai/ai-token-dashboard/pull/32)。代码、验证与合并状态以对应 PR 为准，不代表已部署。
 
 本文件是当前待办与完成状态的统一入口。性能文档记录实现边界和测量证据，历史计划保留方案演变，不作为当前执行清单。这里的“完成”只针对该项验收范围，不代表整个项目不存在问题。
 
@@ -74,15 +74,21 @@
 
 验收：并发写入时，导出仍对应同一版本；内存保持有界；取消、失败和临时资源清理可靠；慢速下载不长期占用写事务。实现方案需同时考虑三种数据库。
 
-### 4. RELEASE-01：公开版本准备
+### 4. RELEASE-01：公开版本准备（验收流程与文档已补齐）
 
 已有中英文 README、MIT 许可证、诊断命令和跨平台 CI，应在这些基础上补充，避免重复搭建。
+
+本轮新增 [Unreleased 版本说明](../CHANGELOG.md)、[升级/回退和支持边界](release.md)、[贡献与反馈入口](../CONTRIBUTING.md)，以及 `npm run test:release`。它复用首次安装冒烟，再用 PR #30 前的冻结 SQLite schema 验证备份、升级、历史字段保留、同步、重启和恢复；三平台 CI 执行同一流程。它不验证任意旧库或远程生产备份，具体限制见升级文档。目标提交的 CI 通过与实际发布分别以 PR / Release 证据为准，当前仍标记 Unreleased。
+
+本地 macOS arm64 / Node 22.22.2 验收：从提交 `9aa2221` 的干净归档安装 `npm ci`，`npm run test:release` 通过；工作区 `npm test` 为 188 通过、2 个远程库测试跳过。跨平台、远程库和浏览器结果见 [PR #32 CI](https://github.com/fengguanghuai/ai-token-dashboard/pull/32/checks)。
 
 验收：形成版本说明、升级/回退与已知限制说明、贡献及问题反馈入口；对拟发布版本完成全新安装和升级验收；确认文档描述的采集器与平台支持范围。准备完成与实际发布分别记录，不能把 `package.json` 的版本号当成已发布证据。
 
 ### 5. QUERY-02：大范围预聚合（按测量决定）
 
 “全部”仍会读取全部日/项目汇总，尚无服务端物化汇总缓存。只有实际查询与内存测量显示需要时才安排，不能仅因缺少缓存就认定为缺陷。
+
+2026-10-04 已加入可重复的[合成查询基准](../scripts/query-benchmark.mjs)，完成 10 万 / 100 万事件的全历史与 30 天对比。100 万全历史约 1.09 秒、峰值 RSS 158 MiB、响应约 10 MiB；30 天约 190 ms、63 MiB。测量不含浏览器、并发及远程库。本轮完成测量，未实现预聚合；后续在实际大库高频全历史场景同时评估查询时间与响应体积，详见[查询证据](query-performance.md#大范围查询的可重复基准)。
 
 ## 更新规则
 
