@@ -263,7 +263,7 @@ docker compose up -d
 | `COLLECTION_RUNS_KEEP` | `500` | 只保留最近 N 条采集运行记录，超出的会在每次打开数据库时清理 |
 | `PARSE_CACHE` | `1` | 增量解析缓存。开启时按文件指纹（mtime+大小）跳过未变化的会话文件；设为 `0` 关闭 |
 | `CODEX_LOG_APPEND_ONLY` | `0` | 可选 Codex 字节续读。仅在保证旧日志内容不被改写时设为 `1`；默认仍完整校验旧前缀。需开启解析缓存，切换模式会重建检查点。详见[可靠性边界](docs/collection-performance.md#codex-可选字节续读) |
-| `SUBSCRIPTION_QUOTA_ENABLED` | `true` | 顶栏的订阅窗口进度条（Claude/Codex 的 5 小时 / 7 天利用率）。**这是唯一会联网的功能**：它用本机已存的 OAuth 凭据调用厂商自家的用量接口。设为 `false` 关闭 |
+| `SUBSCRIPTION_QUOTA_ENABLED` | `true` | 顶栏的订阅窗口进度条（Claude/Codex 的 5 小时 / 7 天利用率）。使用本机 OAuth 凭据联网查询厂商接口，必要时刷新并回写凭据。设为 `false` 关闭此功能 |
 
 ### 定价缓存
 
@@ -307,7 +307,7 @@ npm run collect -- --source "Codex CLI" --full --apply
 
 ## 隐私与安全
 
-- 所有采集操作只读取**本机文件**，正常采集过程中不发起任何网络请求。
+- 采集器读取**本机文件**；使用本地 SQLite 且不传 `--push` 时，采集不联网。配置远程 `DATABASE_URL` 后，采集会连接并写入该数据库。
 - `npm run pricing:update` 会主动访问上游定价源，用于刷新本地价格缓存。
 - 除非显式传入 `--push`，否则不会上传任何数据。
 - `--push` 只向你提供的 URL 发送数据。
@@ -317,7 +317,7 @@ npm run collect -- --source "Codex CLI" --full --apply
 
 ### 订阅额度与账号信息
 
-顶栏的订阅窗口进度条（`SUBSCRIPTION_QUOTA_ENABLED`，默认开启）是**唯一会主动联网**的功能。它读取本机上官方 CLI 自己保存的登录态，去查厂商自家的用量接口，并在卡片上标出当前登录的账号。逻辑全部在 `src/quota.mjs`，数据来源固定为以下本地文件（均支持官方环境变量覆盖路径）：
+顶栏的订阅窗口进度条（`SUBSCRIPTION_QUOTA_ENABLED`，默认开启）会主动联网。它读取官方 CLI 保存在本机的登录态，查询厂商用量接口，并在卡片上显示脱敏账号；凭据即将过期或被接口拒绝时，会尝试 OAuth 刷新并回写原凭据存储。逻辑在 `src/quota.mjs`，数据来源如下：
 
 | 信息 | 读取位置 |
 |------|----------|
@@ -329,12 +329,12 @@ npm run collect -- --source "Codex CLI" --full --apply
 
 数据流约束：
 
-- **出站请求白名单**：仅 `api.anthropic.com/api/oauth/usage`（Claude）和 `chatgpt.com/backend-api/wham/usage`（Codex）两个厂商接口。每个 token 只发给它本来的厂商，与官方 CLI 的去向一致，不经任何第三方。
+- **额度模块请求地址**：`api.anthropic.com/api/oauth/usage` 和 `chatgpt.com/backend-api/wham/usage`；OAuth 刷新使用 `console.anthropic.com/v1/oauth/token` 和 `auth.openai.com/oauth/token`。每个 token 仅用于其所属厂商。
 - **邮箱在服务端脱敏**后才下发前端（如 `some***@example.com`），原始地址不出服务端。
 - **token、account_id 等敏感字段绝不下发前端**，仅在服务端用于发起上述请求。
-- 账号与额度信息属于**实时状态**，从不写入 SQLite、不写日志、不落任何文件。
+- 额度查询结果不写入用量数据库或缓存文件；刷新的登录凭据会写回原钥匙串或凭据文件。
 - 代码中**不含任何账号字面量**（邮箱 / token / ID 均为运行时从本地文件读取，内存内使用后即弃）。
-- 设 `SUBSCRIPTION_QUOTA_ENABLED=false` 可彻底关闭该功能，届时不发起任何出站请求，卡片也不显示。
+- 设 `SUBSCRIPTION_QUOTA_ENABLED=false` 可关闭额度查询及其 OAuth 刷新，卡片也不显示；远程数据库、显式同步和价格刷新由各自配置控制。
 
 ---
 

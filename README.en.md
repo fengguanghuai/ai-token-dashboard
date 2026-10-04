@@ -263,7 +263,7 @@ Notes:
 | `COLLECTION_RUNS_KEEP` | `500` | Keep only the newest N collection-run records; older ones are pruned whenever the database is opened |
 | `PARSE_CACHE` | `1` | Incremental parse cache. When enabled, unchanged session files are skipped by file fingerprint (mtime + size); set to `0` to disable |
 | `CODEX_LOG_APPEND_ONLY` | `0` | Opt-in Codex byte-range continuation. Set to `1` only when old log contents cannot be rewritten; the default still verifies the complete prefix. Requires the parse cache; changing modes rebuilds checkpoints. See [the reliability boundary](docs/collection-performance.md#codex-可选字节续读) |
-| `SUBSCRIPTION_QUOTA_ENABLED` | `true` | The subscription-window bars in the top bar (Claude/Codex 5-hour / 7-day utilization). **This is the only feature that makes network calls**: it uses the OAuth credentials already stored on your machine to call the vendors' own usage endpoints. Set to `false` to disable |
+| `SUBSCRIPTION_QUOTA_ENABLED` | `true` | Subscription-window bars (Claude/Codex 5-hour / 7-day utilization). Uses local OAuth credentials to query vendor endpoints, refreshing and writing credentials back when needed. Set to `false` to disable this feature |
 
 ### Pricing Caches
 
@@ -308,7 +308,7 @@ Apply saves a scoped backup in `data/backups/`, then replaces daily, event and l
 
 ## Privacy & Security
 
-- All data collection reads **local files only** — normal collection makes no network calls.
+- Collectors read **local files**. Collection using local SQLite without `--push` makes no network calls; a remote `DATABASE_URL` connects to and writes that database.
 - `npm run pricing:update` intentionally contacts upstream pricing sources to refresh local caches.
 - Nothing is uploaded unless you explicitly pass `--push`.
 - `--push` sends data only to the URL you provide.
@@ -318,7 +318,7 @@ Apply saves a scoped backup in `data/backups/`, then replaces daily, event and l
 
 ### Subscription Quota & Account Info
 
-The subscription-window bars in the top bar (`SUBSCRIPTION_QUOTA_ENABLED`, on by default) are the **only feature that actively goes online**. They read the login state that the official CLIs already store on your machine, query the vendors' own usage endpoints, and label each card with the currently signed-in account. All of this lives in `src/quota.mjs`; the data sources are fixed local files (each path overridable via the official environment variables):
+The subscription-window bars (`SUBSCRIPTION_QUOTA_ENABLED`, on by default) make network requests. They read the official CLIs' local login state, query vendor usage endpoints and display a masked account. When credentials are near expiry or rejected, the module attempts OAuth refresh and writes the refreshed credentials back to their original store. The implementation is in `src/quota.mjs`; its sources are:
 
 | Information | Source |
 |-------------|--------|
@@ -330,12 +330,12 @@ The subscription-window bars in the top bar (`SUBSCRIPTION_QUOTA_ENABLED`, on by
 
 Data-flow guarantees:
 
-- **Outbound allowlist**: only `api.anthropic.com/api/oauth/usage` (Claude) and `chatgpt.com/backend-api/wham/usage` (Codex). Each token is sent only to its own vendor — the same destination the official CLIs use — never to any third party.
+- **Quota module endpoints**: `api.anthropic.com/api/oauth/usage` and `chatgpt.com/backend-api/wham/usage`; OAuth refresh uses `console.anthropic.com/v1/oauth/token` and `auth.openai.com/oauth/token`. Each token is used only with its own vendor.
 - **Emails are masked server-side** before reaching the client (e.g. `some***@example.com`); the raw address never leaves the server.
 - **Tokens, account IDs, and other sensitive fields are never sent to the client** — they are only used server-side to make the requests above.
-- Account and quota data are **live state**: never written to SQLite, never logged, never persisted to any file.
+- Quota responses are not written to the usage database or cache files; refreshed login credentials are written back to the original Keychain or credential file.
 - The code contains **no account literals** — emails / tokens / IDs are all read from local files at runtime, used in memory, and discarded.
-- Set `SUBSCRIPTION_QUOTA_ENABLED=false` to disable the feature entirely; no outbound requests are made and the cards are hidden.
+- Set `SUBSCRIPTION_QUOTA_ENABLED=false` to disable quota requests and their OAuth refresh and hide the cards. Remote database connections, explicit sync and price refresh have separate controls.
 
 ---
 
