@@ -14,10 +14,11 @@ import { configuredBool, configuredPath, configuredPaths, envPathList } from '..
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 import { cachedParse, flushCache } from './parse-cache.mjs';
+import { parseAppendOnly, validAppendCheckpoint } from './parse-continuation.mjs';
 
 export const CLIENT_KEY = 'claude';
 export const SOURCE_LABEL = 'Claude Code';
-const CACHE_VERSION = 2;   // bump when parseSessionFile output shape changes
+const CACHE_VERSION = 3;   // bump when parsing or checkpoint shape changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -137,7 +138,7 @@ function decodeWorkspaceLabel(dirName) {
  * message.id when requestId is absent, and keep the largest token value seen
  * for each field.
  */
-async function parseSessionFile(filePath) {
+export async function parseSessionFile(filePath) {
   let text;
   try {
     text = await readFile(filePath, 'utf8');
@@ -145,9 +146,21 @@ async function parseSessionFile(filePath) {
     return [];
   }
 
-  const records = [];
-  const dedupIndex = new Map();
-  for (const [lineIndex, line] of text.split('\n').entries()) {
+  return mergeSessionRecords(sessionRecords(text, { lineIndex: 0 }));
+}
+
+// Keep raw usage snapshots in the continuation checkpoint. A later line can
+// revise an earlier response or add advisor usage; merge only after reading,
+// so an unterminated tail can never mutate committed records.
+export function parseSessionText(text, state = { lineIndex: 0 }) {
+  return { events: [...sessionRecords(text, state)], state };
+}
+
+function* sessionRecords(text, state) {
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  for (const line of lines) {
+    const lineIndex = state.lineIndex++;
     const trimmed = line.trim();
     if (!trimmed) continue;
 
@@ -161,7 +174,7 @@ async function parseSessionFile(filePath) {
     // Only assistant turns carry usage information
     if (obj?.type !== 'assistant' || !obj.message?.usage) continue;
 
-    const record = {
+    yield {
       lineIndex,
       messageId: obj.message.id || null,
       requestId: obj.requestId || null,
@@ -172,8 +185,15 @@ async function parseSessionFile(filePath) {
       usage: obj.message.usage,
       costUSD: typeof obj.costUSD === 'number' ? obj.costUSD : 0,
     };
+  }
+}
 
-    const dedupKey = dedupKeyForAssistant(obj);
+export function mergeSessionRecords(events) {
+  const records = [];
+  const dedupIndex = new Map();
+  for (const record of events) {
+    const dedupKey = record.messageId
+      ? JSON.stringify([record.sessionId || '', record.messageId, record.requestId || '']) : null;
 
     if (dedupKey && dedupIndex.has(dedupKey)) {
       const existing = records[dedupIndex.get(dedupKey)];
@@ -185,16 +205,10 @@ async function parseSessionFile(filePath) {
     }
 
     if (dedupKey) dedupIndex.set(dedupKey, records.length);
-    records.push(record);
+    records.push({ ...record, usage: structuredClone(record.usage) });
   }
 
   return records;
-}
-
-function dedupKeyForAssistant(obj) {
-  const messageId = obj.message?.id;
-  if (!messageId) return null;
-  return JSON.stringify([obj.sessionId || '', messageId, obj.requestId || '']);
 }
 
 function mergeUsageMax(target, source) {
@@ -270,6 +284,7 @@ function addInto(target, tokens) {
  * @returns {{ graphJson: object, modelsJson: object }}
  */
 export async function collect(pricingData = null) {
+  const appendOnly = ['1', 'true', 'yes', 'on'].includes(String(process.env.CLAUDE_LOG_APPEND_ONLY || '').trim().toLowerCase());
   // dailyKey ("YYYY-MM-DD::model") -> aggregated token counts
   const dailyMap = new Map();
   // workspaceModelKey ("workspaceDir::model") -> aggregated token counts
@@ -282,7 +297,10 @@ export async function collect(pricingData = null) {
     for (const filePath of filePaths) {
       const workspaceKey = workspaceKeyFromPath(root, filePath);
       const workspaceLabel = decodeWorkspaceLabel(workspaceKey);
-      const records = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath, parseSessionFile);
+      const parsed = await cachedParse(CLIENT_KEY, `${CACHE_VERSION}:${appendOnly ? 'append-only' : 'full'}`, filePath,
+        appendOnly ? (file, previous) => parseAppendOnly(file, previous, parseSessionText, { appendOnly: true }) : parseSessionFile,
+        [], { resume: appendOnly, validate: appendOnly ? validAppendCheckpoint : Array.isArray });
+      const records = appendOnly ? mergeSessionRecords(parsed.events) : parsed;
 
       for (const record of records) {
         candidates.push({ ...record, usage: structuredClone(record.usage), workspaceKey, workspaceLabel, filePath });
