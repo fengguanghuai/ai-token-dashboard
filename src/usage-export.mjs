@@ -1,5 +1,11 @@
 import { dateWhere, eventFilters, queryTime } from './usage-query.mjs';
 import { fromStored } from './db-batch.mjs';
+import { withReadSnapshot } from './db.mjs';
+import { mkdtemp, open, rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 
 const fields = ['source', 'device', 'model', 'inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheCreationTokens', 'reasoningOutputTokens', 'totalTokens', 'costUSD'];
 const titles = ['source', 'device', 'model', 'input', 'output', 'cache_read', 'cache_creation', 'reasoning', 'total', 'cost_usd'];
@@ -55,34 +61,34 @@ export async function* usageCsvPages(db, input, pricingData) {
   } while (true);
 }
 
-// Wait for downstream capacity; stop paging when the browser cancels. Avoid
-// holding a database transaction/connection open while a slow client downloads.
-async function writeChunk(res, chunk) {
-  if (res.destroyed) return false;
-  if (res.write(chunk)) return true;
-  return new Promise((resolve, reject) => {
-    const cleanup = () => { res.off('drain', drain); res.off('close', close); res.off('error', error); };
-    const drain = () => { cleanup(); resolve(true); };
-    const close = () => { cleanup(); resolve(false); };
-    const error = err => { cleanup(); reject(err); };
-    res.once('drain', drain); res.once('close', close); res.once('error', error);
-    if (res.destroyed) close();
-  });
-}
-
-export async function streamUsageCsv(db, params, res, pricingData) {
-  const pages = usageCsvPages(db, params, pricingData);
+// Materialize one consistent snapshot with bounded page memory, then release
+// the database before the first download byte. Slow downloads only hold a file.
+export async function streamUsageCsv(db, params, res, pricingData, { temporaryRoot = tmpdir() } = {}) {
+  if (res.destroyed) return;
+  const directory = await mkdtemp(join(temporaryRoot, 'ai-token-export-'));
+  const path = join(directory, 'usage.csv');
+  let file;
   try {
-    let page = await pages.next(); // Query/validate before committing response.
+    file = await open(path, 'wx', 0o600);
+    await withReadSnapshot(db, async snapshot => {
+      for await (const page of usageCsvPages(snapshot, params, pricingData)) {
+        if (res.destroyed) return;
+        await file.writeFile(page);
+        if (res.destroyed) return;
+      }
+    });
     if (res.destroyed) return;
+    const { size } = await file.stat();
+    await file.close(); file = null;
     res.writeHead(200, { 'content-type': 'text/csv; charset=utf-8',
       'content-disposition': `attachment; filename="tokens-${params.get('mode') === 'time' ? 'time' : 'daily'}.csv"`,
+      'content-length': size,
       'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
-    while (!page.done && !res.destroyed) {
-      if (!await writeChunk(res, page.value)) return;
-      if (res.destroyed) return;
-      page = await pages.next();
-    }
-    if (!res.destroyed) res.end();
-  } finally { await pages.return(); }
+    await pipeline(createReadStream(path), res);
+  } catch (error) {
+    if (!res.destroyed) throw error;
+  } finally {
+    try { await file?.close(); }
+    finally { await rm(directory, { recursive: true, force: true }); }
+  }
 }

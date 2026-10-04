@@ -23,7 +23,7 @@ import { configuredPaths, configuredStrings, envPathList } from '../collector-co
 import { calculateCost } from '../pricing.mjs';
 import { localDateFromTimestamp, normalizeModelForGrouping } from './utils.mjs';
 import { cachedParse, flushCache } from './parse-cache.mjs';
-import { parseAppendOnly } from './parse-continuation.mjs';
+import { parseAppendOnly, validAppendCheckpoint } from './parse-continuation.mjs';
 
 /** Recursively collect all .jsonl file paths under a directory. */
 async function collectJsonlFiles(dir) {
@@ -47,7 +47,7 @@ async function collectJsonlFiles(dir) {
 
 export const CLIENT_KEY = 'codex';
 export const SOURCE_LABEL = 'Codex CLI';
-const CACHE_VERSION = 4;   // bump when parseSessionFile behavior or output changes
+const CACHE_VERSION = 5;   // bump when parseSessionFile behavior or output changes
 const EVENT_HISTORY_DAYS = Number(process.env.TIME_USAGE_HISTORY_DAYS || Infinity);
 const EVENT_CUTOFF_MS = Date.now() - EVENT_HISTORY_DAYS * 24 * 60 * 60 * 1000;
 
@@ -338,6 +338,7 @@ function extractModel(obj) {
 // ---------------------------------------------------------------------------
 
 export async function collect(pricingData = null) {
+  const appendOnly = ['1', 'true', 'yes', 'on'].includes(String(process.env.CODEX_LOG_APPEND_ONLY || '').toLowerCase());
   // Scan active, archived, and optional headless Codex outputs.
   const roots = [...getSessionRoots(), ...getHeadlessRoots()];
   const nestedPaths = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
@@ -353,9 +354,9 @@ export async function collect(pricingData = null) {
 
   for (const filePath of filePaths) {
     const sessionId = basename(filePath).replace(/\.jsonl$/, '');
-    const checkpoint = await cachedParse(CLIENT_KEY, CACHE_VERSION, filePath,
-      (fp, previous) => parseAppendOnly(fp, previous, (text, state) => parseSessionText(text, sessionId, state)),
-      [], { resume: true });
+    const checkpoint = await cachedParse(CLIENT_KEY, `${CACHE_VERSION}:${appendOnly ? 'append-only' : 'verified'}`, filePath,
+      (fp, previous) => parseAppendOnly(fp, previous, (text, state) => parseSessionText(text, sessionId, state), { appendOnly }),
+      [], { resume: true, ...(appendOnly ? { validate: validAppendCheckpoint } : {}) });
     const parsedEvents = checkpoint.events;
 
     for (const { timestamp, date, model, workspace, tokens } of parsedEvents) {

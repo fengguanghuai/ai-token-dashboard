@@ -14,6 +14,7 @@ import { applyCollectionDelta } from '../src/collection-delta.mjs';
 import { invalidateCollectionState } from '../src/collection-state.mjs';
 import { checkDatabase } from '../src/doctor-checks.mjs';
 import { exerciseSyncJournal } from './helpers/sync.mjs';
+import { exerciseSnapshotExport } from './helpers/export.mjs';
 
 for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', 'TEST_MYSQL_URL']]) {
   test(`${name}: schema upgrades, exact upserts, project query, pagination and timezone`, { skip: !process.env[variable] }, async () => {
@@ -21,6 +22,7 @@ for (const [name, variable] of [['PostgreSQL', 'TEST_POSTGRES_URL'], ['MySQL', '
     const device = `test-${randomUUID()}`;
     try {
       await exerciseSyncJournal(db, device + '-sync');
+      await exerciseSnapshotExport(db, device + '-export');
       const snapshot = { daily: [usage({ device, costBasis: 'mixed', pricingVersion: '2026-09-25T00:00:00Z' })],
         time: [event({ device }), event({ device, eventKey: 'b', projectPath: '/project/a' })], sessions: [] };
       await writeSnapshot(db, snapshot);
