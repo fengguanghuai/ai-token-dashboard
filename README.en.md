@@ -105,6 +105,8 @@ Use `npm run --silent doctor -- --json` for a shareable report (no connection st
 
 Contributors can run `npm run test:onboarding` to verify the build, first/repeated collection, and pages/APIs with synthetic logs and a temporary database. It does not collect personal logs. CI runs this flow on macOS, Linux, and Windows.
 
+Before upgrading, read the [changelog](CHANGELOG.md) and [upgrade, backup and rollback guide](docs/release.md) (Chinese). `npm run test:release` also verifies a pre-journal SQLite upgrade, historical values, synchronization and backup restoration on all three CI platforms. See that guide for support boundaries; CI does not certify every vendor log version on every OS.
+
 For browser regression checks, run `npx playwright install chromium` once, then `npm run test:browser`. Synthetic usage covers timezone boundaries, pagination, exports, retries and mobile layouts. CI runs this on Linux.
 
 ### Shared multi-device database
@@ -375,6 +377,8 @@ db/
 ---
 
 ## Contributing
+
+See the [contribution guide](CONTRIBUTING.md) for validation and sanitized bug reports, or open a [GitHub issue](https://github.com/fengguanghuai/ai-token-dashboard/issues/new).
 
 Contributions are welcome. To add support for a new tool, implement a collector in `src/collectors/` that exports a `collect()` function returning `{ graphJson, modelsJson, eventsJson }` — see existing collectors for the expected shape.
 

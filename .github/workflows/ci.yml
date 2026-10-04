@@ -24,7 +24,7 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
-      - run: npm run test:onboarding
+      - run: npm run test:release
       - run: npm test
 
   browser-regression:
