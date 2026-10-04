@@ -263,6 +263,7 @@ Notes:
 | `COLLECTION_RUNS_KEEP` | `500` | Keep only the newest N collection-run records; older ones are pruned whenever the database is opened |
 | `PARSE_CACHE` | `1` | Incremental parse cache. When enabled, unchanged session files are skipped by file fingerprint (mtime + size); set to `0` to disable |
 | `CODEX_LOG_APPEND_ONLY` | `0` | Opt-in Codex byte-range continuation. Set to `1` only when old log contents cannot be rewritten; the default still verifies the complete prefix. Requires the parse cache; changing modes rebuilds checkpoints. See [the reliability boundary](docs/collection-performance.md#codex-可选字节续读) |
+| `CLAUDE_LOG_APPEND_ONLY` | `0` | Opt-in Claude JSONL byte continuation with the same append-only assumption. Changed files are fully parsed by default; the option preserves streamed revisions, advisor usage and cross-file deduplication. Requires the parse cache; changing modes rebuilds the baseline. See [Claude continuation](docs/collection-performance.md#claude-可选字节续读) |
 | `SUBSCRIPTION_QUOTA_ENABLED` | `true` | Subscription-window bars (Claude/Codex 5-hour / 7-day utilization). Uses local OAuth credentials to query vendor endpoints, refreshing and writing credentials back when needed. Set to `false` to disable this feature |
 
 ### Pricing Caches

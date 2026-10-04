@@ -11,7 +11,7 @@
 | START-01 | 启动端口检查与友好提示 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[启动脚本](../src/dev.mjs)：启动子进程前探测端口，冲突时给出提示。 |
 | QUERY-01 | 精确时间查询聚合、明细按需分页 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[查询说明](query-performance.md)：统计基于完整选定范围，事件详情按页加载。 |
 | SYNC-01 | 同步读取变更记录，避免完整快照比较 | 已完成 | [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)：[变更记录](../src/sync-journal.mjs)与用量同事务；[同步](../src/sync.mjs)按目标、设备、来源保存确认进度。首次基线后只读取变化记录，支持历史修正、重试、显式范围替换和慢目标保留；三库契约测试通过。 |
-| READ-01 | 日志从上次位置续读，避免重读变化的大文件 | 部分完成；Codex 可选模式已实现 | [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31) 增加 `CODEX_LOG_APPEND_ONLY=1`：在承诺旧内容不被改写时仅读取新增字节及未完成行。默认仍完整校验；可选模式不能检测历史中部改写后再增长，其他来源也未字节增量化。 |
+| READ-01 | 日志从上次位置续读，避免重读变化的大文件 | 部分完成；Codex、Claude 有可选模式 | [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31) 的 Codex 续读已扩展到 [Claude](../src/collectors/claude-code.mjs)，分别使用 `CODEX_LOG_APPEND_ONLY=1` / `CLAUDE_LOG_APPEND_ONLY=1`。默认完整读取变化文件；可选模式仅读新增字节及未完成行，不能检测历史中部改写后增长，其余来源尚未支持。 |
 
 **计数：3 项完成、1 项部分完成。** 页面“上一周期对比”和多设备“同步比较”是不同功能，不能用 QUERY-01 或 PR #26 代替 SYNC-01 的完成证据。
 
@@ -59,6 +59,8 @@
 先以 Codex 为首个支持来源；其他采集器单独记录支持范围。现有解析状态、累计用量、fork 重放和跨文件去重语义必须保留。
 
 2026-10-04 用户确认保留默认完整校验、增加可选只追加模式。该模式已覆盖重启续读、文件身份变化、可观察截断、同大小改写、半行、UTF-8 分割、缓存损坏和模式切换。64 MiB 合成日志追加 157 字节，仅读取 157 字节；结果与完整校验一致。原始目标继续标为部分完成，因为通用日志的“历史改写检测”和“跳过旧字节”不能同时保证。具体启用方式与测试边界见[采集性能](collection-performance.md#codex-可选字节续读)。
+
+后续扩展到 Claude JSONL，默认仍完整解析变化文件。检查点保存原始用量快照和绝对行号，续读后重新合并响应，保留迟到的流式修正、advisor 和 sidechain 去重。没有修改共享字节读取器或数据库费用逻辑；重复快照较多时缓存可能增大，详见 [Claude 续读边界](collection-performance.md#claude-可选字节续读)。
 
 完成条件：
 

@@ -34,7 +34,7 @@ npm run test:browser
 5. 启动新版本，检查页面、日期范围、历史 Token/金额和 CSV；确认没有端口冲突后再恢复定时采集和同步。已有日汇总不会因 `DISPLAY_TZ` 改变而重建，采集端和中心应使用一致时区。
 6. 第一次同步会发送历史基线；后续按修订发送变化。保留原设备名和来源，观察失败后的重试及中心结果。单独 `--resync` 不删除中心数据；`--full --apply` 是备份后替换范围的独立操作，不是升级必需步骤。
 
-Codex 的 `CODEX_LOG_APPEND_ONLY` 默认关闭；仅当日志旧内容保证不改写时才显式设为 `1`。模式切换会重建解析缓存。它不能检测“中部改写后文件又增长”的情况，详见[采集边界](collection-performance.md)。
+Codex 的 `CODEX_LOG_APPEND_ONLY` 和 Claude 的 `CLAUDE_LOG_APPEND_ONLY` 分别控制可选字节续读，默认均关闭；仅当对应日志旧内容保证不改写时才显式设为 `1`。模式切换会重建解析缓存。这些选项不能检测“中部改写后文件又增长”的情况，详见[采集边界](collection-performance.md)。
 
 ## 回退
 
