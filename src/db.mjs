@@ -30,6 +30,14 @@ export async function openDb(input, { readOnly = false } = {}) {
   return db;
 }
 
+// SQLite needs a separate reader so snapshot generation does not occupy the
+// application's serialized write connection. Remote adapters pin a pool client.
+export async function withReadSnapshot(db, work) {
+  const reader = db.driver === 'sqlite' ? await openDb(db.config, { readOnly: true }) : db;
+  try { return await reader.transaction(work, { readOnly: true }); }
+  finally { if (reader !== db) await reader.close(); }
+}
+
 export function resolveDbConfig(input) {
   const hasExplicitInput = input !== undefined && input !== null;
   const explicit = typeof input === 'string'
@@ -88,8 +96,8 @@ function openSqlite(path, readOnly = false) {
     async all(sql, params = []) { return client.prepare(sql).all(...params); },
     async get(sql, params = []) { return client.prepare(sql).get(...params); },
     async run(sql, params = []) { return client.prepare(sql).run(...params); },
-    async transaction(work) {
-      client.exec('BEGIN IMMEDIATE');
+    async transaction(work, { readOnly = false } = {}) {
+      client.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
       try {
         const tx = { ...direct, transaction: nested => nested(tx) };
         const value = await work(tx);
@@ -149,12 +157,12 @@ function postgresAdapter(pool, queryable, url) {
     async run(sql, params = []) {
       return queryable.query(postgresPlaceholders(sql), params);
     },
-    async transaction(work) {
+    async transaction(work, { readOnly = false } = {}) {
       if (queryable !== pool) return work(db);
       const client = await pool.connect();
       const tx = postgresAdapter(pool, client, url);
       try {
-        await client.query('BEGIN');
+        await client.query(readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
         const value = await work(tx);
         await client.query('COMMIT');
         return value;
@@ -205,12 +213,15 @@ function mysqlAdapter(pool, queryable, url) {
       return rows[0];
     },
     async run(sql, params = []) { return queryable.query(sql, params); },
-    async transaction(work) {
+    async transaction(work, { readOnly = false } = {}) {
       if (queryable !== pool) return work(db);
       const connection = await pool.getConnection();
       const tx = mysqlAdapter(pool, connection, url);
       try {
-        await connection.beginTransaction();
+        if (readOnly) {
+          await connection.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+          await connection.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+        } else await connection.beginTransaction();
         const value = await work(tx);
         await connection.commit();
         return value;

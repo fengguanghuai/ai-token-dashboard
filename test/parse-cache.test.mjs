@@ -112,3 +112,18 @@ test('resumable parsers receive the prior checkpoint only within the same versio
     assert.deepEqual(await cachedParse('resume', 2, file, parse, [], { resume: true }), { count: 1 });
   } finally { cleanup(); }
 });
+
+test('an invalid checkpoint bypasses an unchanged fingerprint cache hit', async () => {
+  const { file, cleanup } = tmpFile('one');
+  const options = { resume: true, validate: record => record.valid === true };
+  let calls = 0;
+  const parse = async () => ({ valid: true, calls: ++calls });
+  try {
+    const first = await cachedParse('validate', 1, file, parse, [], options);
+    await flushCache('validate');
+    first.valid = false;
+    assert.equal((await cachedParse('validate', 1, file, parse, [], options)).calls, 2);
+    await flushCache('validate');
+    assert.equal((await cachedParse('validate', 1, file, parse, [], options)).calls, 2);
+  } finally { cleanup(); }
+});

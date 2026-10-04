@@ -71,7 +71,7 @@ async function fingerprint(filePath) {
  * With resume enabled, the second argument is the previous result; the parser
  * must validate its content against the current file before reusing any state.
  */
-export async function cachedParse(namespace, version, filePath, parseFile, dependencies = [], { resume = false } = {}) {
+export async function cachedParse(namespace, version, filePath, parseFile, dependencies = [], { resume = false, validate = () => true } = {}) {
   if (DISABLED) return parseFile(filePath);
 
   const store = await getStore(namespace, version);
@@ -82,7 +82,7 @@ export async function cachedParse(namespace, version, filePath, parseFile, depen
 
   if (fp) {
     const hit = store.prev.get(filePath);
-    if (hit && hit.fp === fp) {
+    if (hit && hit.fp === fp && validate(hit.records)) {
       store.next.set(filePath, hit);
       return hit.records;
     }

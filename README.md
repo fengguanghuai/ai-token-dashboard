@@ -260,6 +260,7 @@ docker compose up -d
 | `COLLECT_DEVICE` | 主机名 | 定时采集写入记录的设备标签 |
 | `COLLECTION_RUNS_KEEP` | `500` | 只保留最近 N 条采集运行记录，超出的会在每次打开数据库时清理 |
 | `PARSE_CACHE` | `1` | 增量解析缓存。开启时按文件指纹（mtime+大小）跳过未变化的会话文件；设为 `0` 关闭 |
+| `CODEX_LOG_APPEND_ONLY` | `0` | 可选 Codex 字节续读。仅在保证旧日志内容不被改写时设为 `1`；默认仍完整校验旧前缀。需开启解析缓存，切换模式会重建检查点。详见[可靠性边界](docs/collection-performance.md#codex-可选字节续读) |
 | `SUBSCRIPTION_QUOTA_ENABLED` | `true` | 顶栏的订阅窗口进度条（Claude/Codex 的 5 小时 / 7 天利用率）。**这是唯一会联网的功能**：它用本机已存的 OAuth 凭据调用厂商自家的用量接口。设为 `false` 关闭 |
 
 ### 定价缓存
