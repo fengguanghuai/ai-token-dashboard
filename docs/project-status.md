@@ -1,6 +1,6 @@
 # 项目状态与后续工作
 
-更新日期：2026-10-03。优化实现基于 `193277e`；本轮代码、验证与合并状态见 [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)，不代表已部署。
+更新日期：2026-10-04。增量同步及页面优化见 [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)；可选日志字节续读与固定快照导出见 [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31)。代码、验证与合并状态以对应 PR 为准，不代表已部署。
 
 本文件是当前待办与完成状态的统一入口。性能文档记录实现边界和测量证据，历史计划保留方案演变，不作为当前执行清单。这里的“完成”只针对该项验收范围，不代表整个项目不存在问题。
 
@@ -11,7 +11,7 @@
 | START-01 | 启动端口检查与友好提示 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[启动脚本](../src/dev.mjs)：启动子进程前探测端口，冲突时给出提示。 |
 | QUERY-01 | 精确时间查询聚合、明细按需分页 | 已完成 | [PR #24](https://github.com/fengguanghuai/ai-token-dashboard/pull/24)、[查询说明](query-performance.md)：统计基于完整选定范围，事件详情按页加载。 |
 | SYNC-01 | 同步读取变更记录，避免完整快照比较 | 已完成 | [PR #30](https://github.com/fengguanghuai/ai-token-dashboard/pull/30)：[变更记录](../src/sync-journal.mjs)与用量同事务；[同步](../src/sync.mjs)按目标、设备、来源保存确认进度。首次基线后只读取变化记录，支持历史修正、重试、显式范围替换和慢目标保留；三库契约测试通过。 |
-| READ-01 | 日志从上次位置续读，避免重读变化的大文件 | 部分完成 | [PR #27](https://github.com/fengguanghuai/ai-token-dashboard/pull/27)只减少 Codex 的重复 JSON 解析；[续解析模块](../src/collectors/parse-continuation.mjs)仍 `readFile` 整个变化文件并校验旧前缀。尚未实现只读新增字节。 |
+| READ-01 | 日志从上次位置续读，避免重读变化的大文件 | 部分完成；Codex 可选模式已实现 | [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31) 增加 `CODEX_LOG_APPEND_ONLY=1`：在承诺旧内容不被改写时仅读取新增字节及未完成行。默认仍完整校验；可选模式不能检测历史中部改写后再增长，其他来源也未字节增量化。 |
 
 **计数：3 项完成、1 项部分完成。** 页面“上一周期对比”和多设备“同步比较”是不同功能，不能用 QUERY-01 或 PR #26 代替 SYNC-01 的完成证据。
 
@@ -58,6 +58,8 @@
 
 先以 Codex 为首个支持来源；其他采集器单独记录支持范围。现有解析状态、累计用量、fork 重放和跨文件去重语义必须保留。
 
+2026-10-04 用户确认保留默认完整校验、增加可选只追加模式。该模式已覆盖重启续读、文件身份变化、可观察截断、同大小改写、半行、UTF-8 分割、缓存损坏和模式切换。64 MiB 合成日志追加 157 字节，仅读取 157 字节；结果与完整校验一致。原始目标继续标为部分完成，因为通用日志的“历史改写检测”和“跳过旧字节”不能同时保证。具体启用方式与测试边界见[采集性能](collection-performance.md#codex-可选字节续读)。
+
 完成条件：
 
 - 明确哪些日志可以认定为只追加，以及无法确认时的回退策略。仅靠文件大小、时间戳或头尾抽样，不能保证发现历史中部改写。
@@ -66,9 +68,9 @@
 - 若无法在保证所需正确性的前提下跳过旧内容校验，保持“部分完成”，记录限制；不能用重命名或缩小验收口径宣称原始目标完成。
 - 测试与基准明确区分读取、解析、整次采集耗时和峰值内存。
 
-### 3. EXPORT-02：固定快照导出（后续增强）
+### 3. EXPORT-02：固定快照导出（已实现）
 
-现有流式导出已完成；固定快照属于新增目标。当前并发采集/同步可能影响分批实时读取结果，见[导出边界](query-performance.md#csv-导出边界)。
+新增固定快照导出：在数据库只读一致性快照内按页生成私有临时 CSV，提交并释放连接后再开始下载。SQLite 使用独立只读连接，PostgreSQL/MySQL 使用可重复读事务。并发替换来源时，导出各页仍对应同一版本；慢下载不持有数据库事务。验证覆盖取消、查询失败、临时文件清理与三库同一契约，远程库由 CI 验证。见 [PR #31](https://github.com/fengguanghuai/ai-token-dashboard/pull/31) 和[导出边界](query-performance.md#csv-导出边界)。
 
 验收：并发写入时，导出仍对应同一版本；内存保持有界；取消、失败和临时资源清理可靠；慢速下载不长期占用写事务。实现方案需同时考虑三种数据库。
 
