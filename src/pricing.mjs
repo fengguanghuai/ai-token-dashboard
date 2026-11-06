@@ -36,7 +36,8 @@ const EXCLUDED_PREFIXES = ['github_copilot/'];
 /**
  * Hardcoded Cursor overrides for models not yet in LiteLLM upstream.
  * All prices are per-token (i.e. $/1M ÷ 1_000_000).
- * Verified against: cursor.com/en-US/docs/models and llm-stats.com
+ * Legacy estimates, not all reverified against current official API prices.
+ * See docs/pricing-verification.md for sources and retained/unconfirmed values.
  */
 const CURSOR_OVERRIDES = {
   // GPT-5.3 family: $1.75/$14.00 per 1M, cache read $0.175/1M
